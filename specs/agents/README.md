@@ -53,6 +53,44 @@ tooling: pgvector
 - Threshold tables become named constants, so tuning them does not require
   editing prose.
 
+## Rules Earned the Hard Way
+
+Each of these cost a real bug. They apply to every agent, so they live here
+rather than being rediscovered one spec at a time.
+
+- **Never emit a placeholder where a real value belongs.**
+  `env-setup-validator` returned `"# no test command detected"` as a command,
+  and the roadmap rendered it as a numbered shell step with a time estimate
+  beside it. Return null and let the consumer say what is missing.
+- **An unmeasurable signal is null, not zero.**
+  No merged PRs is not a 0% merge rate; no maintainer reply is not an instant
+  response; no commits is not dormancy. Each renders as "could not be
+  determined", because a fabricated number is indistinguishable from a real one
+  once it reaches the roadmap.
+- **Never report a step verified without having run it.**
+  A green check the user trusts is worse than an honest warning.
+- **Prefer exact counts to sampled pages.**
+  GitHub listing endpoints cannot sort by close date, so paging them biases any
+  rate computed from the result. Use the search API when the total is what
+  matters.
+- **Verify against real repositories before believing a green suite.**
+  Every significant bug in this codebase passed its mocked tests first: the
+  conjunctive `labels` parameter, the truncated recursive tree, the biased merge
+  rate, the duplicate installers, missing Ruby, and a placeholder rendered as a
+  command. Mocks confirm the code does what you assumed; only live data
+  challenges the assumption.
+- **Map every failure onto the pipeline's own error type.**
+  A raw `httpx.ConnectTimeout` once escaped every `PipelineError` handler during
+  a concurrent fan-out. One layer, one failure surface.
+- **Deterministic assembly beats an LLM call for composition.**
+  Where a step only arranges facts other agents established, template it. That
+  keeps output reproducible, budgets enforceable, and removes any chance of the
+  final step inventing a fact.
+- **The pipeline is a data contract, not a call graph.**
+  Adding `DeveloperContext.name` for the roadmap header meant `resume-parser`
+  had to start extracting it. A field is not real until the agent that produces
+  it says so.
+
 ## Status
 
 | Agent | State |

@@ -23,7 +23,7 @@ Getting started with open source is hard. You don't know which issue to pick, wh
 **Pocket OSS Agent** solves this with a multi-agent AI pipeline that:
 1. Reads your resume to understand your skills
 2. Interviews you to understand your *goals*
-3. Investigates the target GitHub repo using the official GitHub MCP Server
+3. Investigates the target GitHub repo through the GitHub API
 4. Finds the single best issue for you - semantically, not just by label
 5. Delivers a **one-page contribution roadmap** tailored to you
 
@@ -48,7 +48,7 @@ Login → Upload Resume → Interview → Pick Repo → Agentic Analysis → 1-P
 
 ## 🤖 Agent Architecture
 
-The system uses **four specialized agents** orchestrated via [LangGraph](https://github.com/langchain-ai/langgraph):
+The system uses **seven specialized agents**, to be orchestrated via [LangGraph](https://github.com/langchain-ai/langgraph):
 
 ```mermaid
 graph TD
@@ -59,7 +59,7 @@ graph TD
 
     subgraph "Data & Tooling"
     DB[(Postgres + pgvector)]
-    MCP[GitHub MCP Server]
+    API[GitHub API]
     end
 
     subgraph "AI Orchestration"
@@ -71,17 +71,25 @@ graph TD
     Intv --> Orch
     Resume --> Pars
     Pars --> DB
-    Repo --> MCP
-    Orch --> MCP & DB
+    Repo --> API
+    Orch --> API & DB
     Gen -->|AI Core| Output[1-Page Roadmap]
 ```
 
-| Agent | Role |
-|-------|------|
-| **Orchestrator** | Manages state and task sequencing across the pipeline |
-| **Interviewer** | Asks 4–5 targeted questions to capture contribution intent |
-| **Resume Parser** | Extracts languages, frameworks, seniority, and domain from PDF |
-| **Strategy Generator** | Weaves all signals into the final one-page roadmap |
+| Agent | Role | Status |
+|-------|------|--------|
+| **Resume Parser** | Extracts name, languages, frameworks, seniority and domain from a PDF | Spec only |
+| **Interviewer** | Asks 4 to 5 targeted questions to capture contribution intent | ✅ Built |
+| **Repo Investigator** | Builds a repo fact sheet: layout, candidate issues, PR velocity | ✅ Built |
+| **Env Setup Validator** | Detects the toolchain and drafts the First Mile guide | ✅ Built |
+| **Vibe Checker** | Scores maintainer responsiveness and welcome signals | ✅ Built |
+| **Skill Matcher** | Ranks candidate issues against the developer profile | Spec only |
+| **Strategy Generator** | Weaves all signals into the final one-page roadmap | ✅ Built |
+
+Five of the seven are implemented with 100% test coverage.
+The two outstanding ones need Postgres, pgvector and an LLM.
+State is threaded between them by hand today; LangGraph orchestration is not
+wired up yet.
 
 ---
 
@@ -90,8 +98,8 @@ graph TD
 ### 🧠 Intelligent Skill Matching
 Uses **pgvector** to run semantic similarity searches between your resume profile + interview answers and open GitHub issues - not just keyword matching.
 
-### 🔍 GitHub MCP Server Integration
-Agents interact with GitHub through the [official GitHub MCP Server](https://github.com/github/github-mcp-server), enabling token-efficient summarization of large repos (issue lists, file trees, PR history) before passing data to the AI.
+### 🔍 Token-Efficient GitHub Access
+Agents summarize repository data (issue lists, file trees, PR history) before any of it reaches an LLM. Nodes that fetch a fixed sequence deterministically use the GitHub REST API directly; the MCP Server is reserved for paths where an LLM chooses its own tools.
 
 ### 💬 Vibe Check
 Real-time sentiment analysis on maintainer responsiveness: commit recency, issue response time, PR merge rate, and contributor-welcome signals.
@@ -103,7 +111,9 @@ Auto-detects your repo's toolchain (Docker, Poetry, npm, Gradle, etc.) and gener
 
 ## 📄 The One-Page Roadmap
 
-Every roadmap fits in a single screen and contains four sections:
+Every roadmap fits in a single screen and contains four sections.
+Setup steps are marked ⚠️ until the sandboxed dry run lands, because a step is
+never reported verified without having been executed:
 
 ```markdown
 # OSS Contribution Roadmap: {repo}
@@ -114,9 +124,10 @@ Every roadmap fits in a single screen and contains four sections:
 - `tests/` - Unit and integration tests
 
 ## 🚀 First Mile Setup
-1. git clone ... 
-2. poetry install ✅
-3. docker-compose up -d ✅
+1. `git clone ...` ⚠️ _~1 min_
+2. `uv sync` ⚠️ _~2 min_
+3. `docker compose up -d` ⚠️ _~3 min_
+> ⚠️ Steps are inferred from config files, not yet executed.
 
 ## 🎯 Your First Contribution
 **Issue:** Add support for async Python client
@@ -135,7 +146,7 @@ Every roadmap fits in a single screen and contains four sections:
 | **AI Model** | State-of-the-art high-reasoning model |
 | **Orchestration** | Python · FastAPI · LangGraph |
 | **Database** | PostgreSQL + `pgvector` extension |
-| **GitHub Tooling** | Official GitHub MCP Server |
+| **GitHub Tooling** | GitHub REST API; MCP Server where an LLM picks tools |
 | **UI** | Streamlit or Next.js |
 
 ---
@@ -150,7 +161,7 @@ tooling for a coding assistant:
 |-------|---------|
 | [`interviewer-agent`](specs/agents/interviewer-agent.md) | Dynamic pre-analysis discovery interview |
 | [`resume-parser`](specs/agents/resume-parser.md) | Structured developer profile extraction from PDF |
-| [`github-repo-investigator`](specs/agents/github-repo-investigator.md) | MCP-powered deep repo analysis |
+| [`github-repo-investigator`](specs/agents/github-repo-investigator.md) | Deep repo analysis via the GitHub API |
 | [`skill-matcher`](specs/agents/skill-matcher.md) | pgvector semantic issue matching with interview filters |
 | [`env-setup-validator`](specs/agents/env-setup-validator.md) | Auto-detect toolchain + generate First Mile setup |
 | [`repo-vibe-checker`](specs/agents/repo-vibe-checker.md) | Contributor-friendliness sentiment analysis |
@@ -160,13 +171,16 @@ tooling for a coding assistant:
 
 ## 🗺️ Roadmap
 
-- [ ] Core agent pipeline (LangGraph)
-- [ ] Resume parser + pgvector embeddings
-- [ ] GitHub MCP Server integration
-- [ ] Interviewer agent UI flow
-- [ ] Skill matcher with interview context filters
-- [ ] Streamlit MVP demo
-- [ ] Next.js production UI
+- [x] `github-repo-investigator` - repo fact sheet from a URL
+- [x] `repo-vibe-checker` - maintainer responsiveness and welcome signals
+- [x] `env-setup-validator` - toolchain detection and First Mile guide
+- [x] `interviewer-agent` - headless discovery interview
+- [x] `contribution-strategy-generator` - the one-page roadmap
+- [ ] `resume-parser` - PDF extraction + pgvector embeddings
+- [ ] `skill-matcher` - semantic issue matching
+- [ ] Sandboxed dry run, so setup steps can be marked verified
+- [ ] LangGraph orchestration + FastAPI
+- [ ] Streamlit MVP demo, then Next.js production UI
 - [ ] Auth (Google OAuth 2.0)
 
 ---

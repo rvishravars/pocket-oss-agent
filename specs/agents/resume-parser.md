@@ -28,6 +28,7 @@ Writes `developer_context` to the session state object.
 
 ```json
 {
+  "name": "Ada Okafor",
   "languages": ["Python", "Java"],
   "frameworks": ["FastAPI", "Spring Boot"],
   "tools": ["Docker", "AWS", "GitHub Actions"],
@@ -54,6 +55,7 @@ Writes `developer_context` to the session state object.
    - Send the raw text with the extraction prompt:
      ```
      You are a technical recruiter. From the resume text below, extract:
+     - Full name of the candidate, or null if not clearly present
      - Programming languages (list)
      - Frameworks and libraries (list)
      - Cloud/infra tools (list)
@@ -69,6 +71,10 @@ Writes `developer_context` to the session state object.
      `seniority`, `domain`.
    - Re-prompt once with the missing fields named explicitly.
    - Abort if the second attempt is still incomplete.
+   - `name` is the one optional field.
+     `contribution-strategy-generator` greets the developer by name in the
+     roadmap header and drops the greeting when it is null, so an unparseable
+     name must not fail an otherwise usable profile.
 
 4. **Persist**
    - Store `developer_context` against the user session in Postgres.
