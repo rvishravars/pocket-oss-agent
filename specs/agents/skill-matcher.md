@@ -1,83 +1,40 @@
 ---
-name: skill-matcher
-description: >-
-  Use this skill when you need to match a developer's technical profile and
-  interview answers against a GitHub repository's open issues to find the
-  best-fit contribution opportunity. Ranks candidate issues in-context using
-  reasoning over skills, interview intent, and issue content - no vector
-  database required.
+agent: skill-matcher
+position: 6
+consumes: [developer_context, interview_context, repo_facts]
+produces: top_match
+tooling: pgvector
 ---
 
-# Skill Matcher Skill
+# Skill Matcher
 
-Bridges the developer profile (from `resume-parser`), interview intent (from
-`interviewer-agent`), and repo facts (from `github-repo-investigator`) to
-pick the single best-fit issue.
+Selects the single best-fit issue by running a vector similarity search in
+pgvector, filtered and re-scored using interview intent.
+Runs after `interviewer-agent` and `github-repo-investigator`.
 
-This is the in-context version for a single Claude Code session: ranking is
-done by direct reasoning over the candidate issues, not by a pgvector
-similarity search. (The production app described in `idea.md` uses
-Postgres+pgvector for this at scale with a real embedding index - that's a
-separate system from this skill and doesn't need to exist for this skill to
-work.)
+## Inputs
+
+| Key | Source | Required |
+|-----|--------|----------|
+| `developer_context` | `resume-parser` | Yes |
+| `interview_context` | `interviewer-agent` | Yes |
+| `repo_facts.good_first_issues` | `github-repo-investigator` | Yes |
+
+Abort with a descriptive error if any is absent.
 
 ## Prerequisites
 
-- `developer_context` (from `resume-parser`) is available in the
-  conversation.
-- `interview_context` (from `interviewer-agent`) is available in the
-  conversation.
-- The list of candidate issues (`good_first_issues`) from
-  `github-repo-investigator`'s output is available.
+- PostgreSQL with the `pgvector` extension is running.
+- The developer embedding is stored in `developer_profiles`.
+- Repository documentation embeddings are stored in `repo_embeddings`.
+- Every table and every runtime call uses the same embedding model, for
+  example `text-embedding-004`.
+  Mixing models silently produces meaningless cosine distances, so the model
+  identifier is validated at startup rather than assumed.
 
-## Steps
+## Output
 
-1. **Load Inputs**
-   - Gather `developer_context`, `interview_context`, and the candidate
-     issue list from earlier in the conversation.
-
-2. **Apply Hard Filters from Interview Context**
-   - If `interview_context.contribution_types` does not include `"any"`,
-     discard issues whose labels don't match at least one preferred type:
-     - `type:bugfix` → keep issues labelled `bug`
-     - `type:docs` → keep issues labelled `documentation`
-     - `type:feature` → keep issues labelled `enhancement` or `feature`
-     - `type:tests` → keep issues labelled `tests` or `coverage`
-     - `type:refactor` → keep issues labelled `refactor` or `performance`
-   - If `interview_context.time_commitment == "light"`, discard issues
-     whose title/body implies large scope (large refactors, new subsystems).
-
-3. **Rank the Remaining Candidates**
-   - For each remaining issue, read its title and available body text and
-     judge fit against `developer_context` (languages, frameworks, domain)
-     and `interview_context` (goal, risk tolerance, collaboration style).
-   - Assign each issue a fit score from 0-1 based on your own judgment -
-     this replaces the cosine-similarity step in the pgvector version.
-     Treat it as a considered estimate, not a precise measurement.
-   - Apply the same adjustments the production scoring model uses, as
-     qualitative nudges to your ranking rather than literal arithmetic:
-     - Favor issues mentioning the developer's top languages/frameworks.
-     - Favor issues matching `interview_context.contribution_types`.
-     - If `risk_tolerance == "low"`, deprioritize issues that look
-       high-complexity (large diff surface, marked `hard` /
-       `high-complexity`, touches core/internals).
-     - If `collaboration_style == "guided"`, favor issues with active
-       discussion (multiple comments) over quiet ones.
-
-4. **Select the Best Match**
-   - Take the top-ranked issue as the **Personalized Target**.
-   - Build a 2-sentence rationale combining:
-     1. Resume signal: `"You have X years of [language] experience."`
-     2. Interview signal: `"Matches your goal to [intent_summary excerpt]
-        with [time_commitment] availability."`
-
-5. **Verify**
-   - If your top match's fit feels weak (loose keyword overlap only, no
-     real skill/goal alignment), say so rather than presenting it with
-     false confidence: "No strong match found - recommend browsing issues
-     manually."
-
-## Output Schema
+Writes `top_match` to the session state object.
 
 ```json
 {
@@ -86,9 +43,87 @@ work.)
     "title": "Add support for async Python client",
     "url": "https://github.com/...",
     "score": 0.87,
+    "score_breakdown": {
+      "semantic_similarity": 0.74,
+      "language_boost": 0.10,
+      "interview_type_boost": 0.08,
+      "risk_penalty": 0.0,
+      "collab_boost": 0.05
+    },
     "rationale": "You have 5 years of Python experience with asyncio. Matches your goal to build portfolio with lightweight fixes and ~5 hrs/week availability."
   },
   "filters_applied": ["contribution_types:bugfix,docs", "time:light"],
-  "all_matches": [...]
+  "all_matches": []
 }
 ```
+
+## Steps
+
+1. **Load inputs**
+   - Read `developer_context`, `interview_context`, and
+     `repo_facts.good_first_issues` from session state.
+
+2. **Apply hard filters from interview context**
+   - When `contribution_types` does not include `any`, discard issues whose
+     labels match none of the preferred types:
+
+     | Tag | Keeps issues labelled |
+     |-----|----------------------|
+     | `type:bugfix` | `bug` |
+     | `type:docs` | `documentation` |
+     | `type:feature` | `enhancement`, `feature` |
+     | `type:tests` | `tests`, `coverage` |
+     | `type:refactor` | `refactor`, `performance` |
+
+   - When `time_commitment` is `light`, discard issues whose effort label
+     exceeds 4 hours.
+     Most repositories carry no effort labels, so this filter applies only
+     where the label exists and must not discard unlabelled issues.
+   - Record every filter applied in `filters_applied`.
+   - If filtering empties the candidate set, skip to step 6 and report no
+     match rather than silently relaxing the filters.
+
+3. **Generate issue embeddings**
+   - For each surviving candidate, embed `title + body[:200]`.
+   - Use the model named in the prerequisites.
+   - These are request-scoped and need not be persisted.
+
+4. **Run the similarity search**
+   ```sql
+   SELECT issue_id, title, url, 1 - (embedding <=> $developer_embedding) AS score
+   FROM candidate_issues
+   ORDER BY embedding <=> $developer_embedding
+   LIMIT 5;
+   ```
+
+5. **Score and rank**
+   - Sort by cosine similarity descending, then apply:
+
+     | Condition | Adjustment |
+     |-----------|-----------|
+     | Issue mentions any of the developer's top 3 languages | +0.10 |
+     | Issue type matches `interview_context.contribution_types` | +0.08 |
+     | `risk_tolerance` is `low` and issue is labelled `high-complexity` or `hard` | -0.15 |
+     | `collaboration_style` is `guided` and `comment_count` is 3 or more | +0.05 |
+
+   - Persist each component in `score_breakdown` so a recommendation can be
+     explained and regression-tested.
+
+6. **Select and explain**
+   - The highest scoring issue becomes the Personalized Target.
+   - Build a two-sentence rationale:
+     1. Resume signal: `"You have X years of [language] experience."`
+     2. Interview signal: `"Matches your goal to [intent_summary excerpt] with
+        [time_commitment] availability."`
+
+7. **Verify**
+   - A top score above 0.65 is a confident match.
+   - When no issue scores above 0.4, emit the warning
+     `"No strong match found, recommend browsing issues manually."`
+     and leave `top_match` null.
+     `contribution-strategy-generator` renders the fallback in that case.
+
+## References
+
+- `references/pgvector_setup.md`
+- `scripts/generate_embeddings.py`

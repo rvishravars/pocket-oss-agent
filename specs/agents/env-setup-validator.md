@@ -1,70 +1,33 @@
 ---
-name: env-setup-validator
-description: >-
-  Use this skill when you need to generate and validate local environment
-  setup commands for a GitHub repository. Detects Docker, build scripts, and
-  package managers from the repo's file tree to produce a verified "First
-  Mile" setup guide.
+agent: env-setup-validator
+position: 4
+consumes: [repo_facts]
+produces: setup_steps
+tooling: GitHub MCP Server, sandbox runner
 ---
 
-# Env Setup Validator Skill
+# Env Setup Validator
 
-Generates a step-by-step local environment setup guide for a repository.
-Output is used in the "First Mile Setup" section of the final roadmap.
+Detects the repository toolchain and produces a validated local setup guide.
+Populates the "First Mile Setup" section of the roadmap.
+Runs after `github-repo-investigator`, in parallel with `repo-vibe-checker`.
+
+## Inputs
+
+| Key | Source | Required |
+|-----|--------|----------|
+| `repo_facts` | `github-repo-investigator` | Yes |
+
+Abort with a descriptive error if `repo_facts` is absent.
 
 ## Prerequisites
 
-- Repository file tree is available (from `github-repo-investigator`), or
-  a local clone of the repo to inspect directly.
+- GitHub MCP Server is accessible for fetching individual config files.
+- A sandboxed runner is available for dry-run validation.
 
-## Steps
+## Output
 
-1. **Detect Package Manager**
-   - Scan the root file tree for known config files:
-     | File | Package Manager |
-     |------|----------------|
-     | `package.json` | npm / yarn / pnpm |
-     | `requirements.txt` / `pyproject.toml` | pip / poetry |
-     | `pom.xml` / `build.gradle` | Maven / Gradle |
-     | `go.mod` | Go modules |
-     | `Cargo.toml` | Rust / Cargo |
-   - Record the detected package manager(s). If working from a repo fact
-     sheet rather than a local clone, fetch specific files as needed:
-     ```bash
-     gh api repos/{owner}/{repo}/contents/package.json
-     ```
-
-2. **Detect Container Tooling**
-   - Check for `Dockerfile`, `docker-compose.yml`, `devcontainer.json`.
-   - If `docker-compose.yml` exists, extract the `services` keys as a list.
-
-3. **Detect Build/Test Scripts**
-   - Check `Makefile` for common targets: `build`, `test`, `dev`.
-   - Check `package.json`'s `scripts` block for `build`, `test`, `dev`, `start`.
-   - Check the `CONTRIBUTING.md` summary (from `github-repo-investigator`)
-     for any code-fenced setup commands.
-
-4. **Generate Setup Instructions**
-   - Assemble a sequential list of commands:
-     1. Clone command
-     2. Dependency install (based on detected package manager)
-     3. Environment setup (`.env.example` copy if present)
-     4. Docker/service startup (if detected)
-     5. Run tests (to verify the environment)
-   - Format as a numbered Markdown list with code blocks.
-
-5. **Dry-Run Validation (if you have a local clone)**
-   - If you've actually cloned the repo and have shell access to it, run
-     steps 2-5 for real and record exit codes.
-   - If working only from the fact sheet (no local clone), skip execution
-     and mark every step ⚠️ **Unverified** rather than guessing at results.
-
-6. **Verify**
-   - Confirm the generated setup list has ≥ 3 steps.
-   - Mark each step ✅ **Validated** (actually ran) or ⚠️ **Unverified**
-     (inferred from config files only).
-
-## Output Schema
+Writes `setup_steps` to the session state object.
 
 ```json
 {
@@ -73,10 +36,58 @@ Output is used in the "First Mile Setup" section of the final roadmap.
   "docker_services": ["db", "redis", "app"],
   "setup_steps": [
     { "step": 1, "command": "git clone https://github.com/...", "status": "validated" },
-    { "step": 2, "command": "poetry install", "status": "unverified" },
+    { "step": 2, "command": "poetry install", "status": "validated" },
     { "step": 3, "command": "cp .env.example .env", "status": "unverified" },
-    { "step": 4, "command": "docker-compose up -d", "status": "unverified" },
-    { "step": 5, "command": "poetry run pytest", "status": "unverified" }
+    { "step": 4, "command": "docker-compose up -d", "status": "validated" },
+    { "step": 5, "command": "poetry run pytest", "status": "validated" }
   ]
 }
 ```
+
+## Steps
+
+1. **Detect the package manager**
+   - Scan the file tree in `repo_facts.architecture_snapshot` for:
+     | File | Package Manager |
+     |------|----------------|
+     | `package.json` | npm / yarn / pnpm |
+     | `requirements.txt` / `pyproject.toml` | pip / poetry |
+     | `pom.xml` / `build.gradle` | Maven / Gradle |
+     | `go.mod` | Go modules |
+     | `Cargo.toml` | Rust / Cargo |
+   - Fetch the matched file through MCP to disambiguate, for example reading
+     the `packageManager` field or a lockfile name.
+
+2. **Detect container tooling**
+   - Check for `Dockerfile`, `docker-compose.yml`, `devcontainer.json`.
+   - Extract the `services` keys from `docker-compose.yml`.
+
+3. **Detect build and test scripts**
+   - `Makefile` targets: `build`, `test`, `dev`.
+   - `package.json` scripts: `build`, `test`, `dev`, `start`.
+   - Code-fenced commands in `repo_facts.contributing_summary`.
+
+4. **Generate setup instructions**
+   - Assemble in order:
+     1. Clone
+     2. Dependency install
+     3. Environment setup, copying `.env.example` if present
+     4. Docker or service startup
+     5. Test run, to prove the environment works
+
+5. **Dry-run validation**
+   - Execute steps 2 through 5 in the sandbox and record exit codes.
+   - Mark a zero exit code `validated`.
+   - Mark a non-zero exit code or a skipped step `unverified`.
+   - Never mark a step `validated` without having run it.
+     A fabricated green checkmark is worse than an honest warning, because the
+     roadmap presents these as confirmed.
+
+6. **Verify**
+   - The list has at least 3 steps.
+   - Every step carries an explicit `validated` or `unverified` status.
+
+## References
+
+- `scripts/detect_setup.py`
+- `examples/setup_output.json`

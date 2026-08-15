@@ -141,17 +141,19 @@ Every roadmap fits in a single screen and contains four sections:
 
 ## 🤖 Agent Skills
 
-This repo ships with 7 reusable [Antigravity](https://antigravity.dev) agent skills under `.agents/skills/`:
+The seven agents are specified under `specs/agents/`.
+These are product specifications that the implementation is written against, not
+tooling for a coding assistant:
 
 | Skill | Purpose |
 |-------|---------|
-| [`interviewer-agent`](.agents/skills/interviewer-agent/SKILL.md) | Dynamic pre-analysis discovery interview |
-| [`resume-parser`](.agents/skills/resume-parser/SKILL.md) | Structured developer profile extraction from PDF |
-| [`github-repo-investigator`](.agents/skills/github-repo-investigator/SKILL.md) | MCP-powered deep repo analysis |
-| [`skill-matcher`](.agents/skills/skill-matcher/SKILL.md) | pgvector semantic issue matching with interview filters |
-| [`env-setup-validator`](.agents/skills/env-setup-validator/SKILL.md) | Auto-detect toolchain + generate First Mile setup |
-| [`repo-vibe-checker`](.agents/skills/repo-vibe-checker/SKILL.md) | Contributor-friendliness sentiment analysis |
-| [`contribution-strategy-generator`](.agents/skills/contribution-strategy-generator/SKILL.md) | Weaves all outputs into the final 1-page roadmap |
+| [`interviewer-agent`](specs/agents/interviewer-agent.md) | Dynamic pre-analysis discovery interview |
+| [`resume-parser`](specs/agents/resume-parser.md) | Structured developer profile extraction from PDF |
+| [`github-repo-investigator`](specs/agents/github-repo-investigator.md) | MCP-powered deep repo analysis |
+| [`skill-matcher`](specs/agents/skill-matcher.md) | pgvector semantic issue matching with interview filters |
+| [`env-setup-validator`](specs/agents/env-setup-validator.md) | Auto-detect toolchain + generate First Mile setup |
+| [`repo-vibe-checker`](specs/agents/repo-vibe-checker.md) | Contributor-friendliness sentiment analysis |
+| [`contribution-strategy-generator`](specs/agents/contribution-strategy-generator.md) | Weaves all outputs into the final 1-page roadmap |
 
 ---
 

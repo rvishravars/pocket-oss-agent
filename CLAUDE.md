@@ -27,6 +27,15 @@ Claude-only rules belong in this file.
 
 ## Skills
 
-Project skills live in `.claude/skills/`.
-`pocket-oss-agent` is the entry point; it sequences the other seven.
-This repository does not rely on any globally installed skills, so keep every skill self-contained.
+This repository has no `.claude/skills/` directory, and that is intentional.
+Skills auto-trigger on the phrasing used while developing, so if the product's seven
+runtime agents lived there they would shadow the real implementation during testing.
+Their specifications are in `specs/agents/` instead.
+
+Do not add a skill that performs a pipeline agent's job.
+A skill here should encode development conventions, such as LangGraph node structure
+or how to run the agent evals, and only once there is code for it to describe.
+
+`.claude/commands/` holds a conversational prototype of the pipeline.
+Slash commands only run when typed explicitly, so they are safe.
+They are not reconciled with `specs/agents/` and are not authoritative.

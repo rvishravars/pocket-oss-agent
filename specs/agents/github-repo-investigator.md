@@ -1,70 +1,35 @@
 ---
-name: github-repo-investigator
-description: >-
-  Use this skill when the user provides a GitHub repository URL and wants a
-  deep analysis of the codebase. Uses the `gh` CLI to fetch repo structure,
-  documentation, issues, and PR activity, summarizing before passing results
-  downstream to keep token usage low.
+agent: github-repo-investigator
+position: 3
+consumes: [repo_url]
+produces: repo_facts
+tooling: GitHub MCP Server
 ---
 
-# GitHub Repo Investigator Skill
+# GitHub Repo Investigator
 
-Analyzes a public GitHub repository to produce a structured fact sheet used
-by `contribution-strategy-generator`, `repo-vibe-checker`,
-`env-setup-validator`, and `skill-matcher`.
+Produces a structured fact sheet for the target repository.
+Runs in parallel with `resume-parser`.
+Feeds `env-setup-validator`, `repo-vibe-checker`, `skill-matcher`, and
+`contribution-strategy-generator`.
+
+## Inputs
+
+| Source | Value |
+|--------|-------|
+| User | Public GitHub repository URL |
 
 ## Prerequisites
 
-- `gh` CLI is installed and authenticated (`gh auth status`). If not
-  authenticated, tell the user to run `gh auth login` first - don't attempt
-  to fetch private-repo data unauthenticated.
-- A valid public GitHub repository URL is provided.
+- GitHub MCP Server is configured and running. See `mcp_config.json`.
+- `GITHUB_TOKEN` is present in the environment.
 
-## Steps
+Abort with a descriptive error if the MCP Server is unreachable, the URL is
+malformed, or the repository is private or rate-limited.
 
-1. **Parse the Repository URL**
-   - Extract `owner` and `repo` from the URL.
-   - Example: `https://github.com/langchain-ai/langchain` → `owner=langchain-ai`, `repo=langchain`
+## Output
 
-2. **Fetch Core Documentation**
-   - Retrieve `README.md`, `CONTRIBUTING.md`, and `CODEOWNERS` (if present):
-     ```bash
-     gh api repos/{owner}/{repo}/readme --jq .content | base64 -d
-     gh api repos/{owner}/{repo}/contents/CONTRIBUTING.md --jq .content | base64 -d
-     ```
-   - Summarize each file to under 500 tokens before carrying it forward -
-     don't keep full raw text in context past this step.
-
-3. **Map the File Tree**
-   - Fetch the top-level directory structure (depth ≤ 2):
-     ```bash
-     gh api repos/{owner}/{repo}/git/trees/HEAD?recursive=0
-     ```
-   - Identify key directories: `src/`, `lib/`, `tests/`, `docs/`, `examples/`.
-   - Record this as the **Architecture Snapshot**.
-
-4. **Triage Open Issues**
-   - Query issues with beginner-friendly labels, opened or commented on in
-     the last 90 days:
-     ```bash
-     gh issue list --repo {owner}/{repo} --label "good first issue,help wanted,beginner" --state open --limit 30 --json number,title,url,labels,updatedAt,createdAt,comments
-     ```
-   - Return the top 10 candidates with: title, URL, label, days open.
-
-5. **Check PR Activity**
-   - Fetch the last 20 merged PRs and calculate average time-to-merge:
-     ```bash
-     gh pr list --repo {owner}/{repo} --state merged --limit 20 --json number,createdAt,mergedAt
-     ```
-   - Flag the repo as "slow-moving" if the average exceeds 30 days.
-
-6. **Verify**
-   - Confirm at least 1 good-first-issue-style candidate was found, or note
-     the warning explicitly.
-   - Validate that the Architecture Snapshot has at least 3 identified
-     directories.
-
-## Output Schema
+Writes `repo_facts` to the session state object.
 
 ```json
 {
@@ -78,8 +43,53 @@ by `contribution-strategy-generator`, `repo-vibe-checker`,
     "docs": "Documentation site"
   },
   "good_first_issues": [
-    { "title": "Fix typo in README", "url": "...", "days_open": 3 }
+    { "id": 1234, "title": "Fix typo in README", "url": "...", "labels": ["docs"], "days_open": 3, "comment_count": 2 }
   ],
   "avg_pr_merge_days": 4.2
 }
 ```
+
+## Token Budget
+
+This agent is the main defence against context bloat.
+Summarize before writing to session state.
+Raw file trees and full issue bodies must never reach the session state object
+or any downstream LLM call.
+
+## Steps
+
+1. **Parse the repository URL**
+   - Extract `owner` and `repo`.
+   - `https://github.com/langchain-ai/langchain` gives `owner=langchain-ai`, `repo=langchain`.
+
+2. **Fetch core documentation via MCP**
+   - Retrieve `README.md`, `CONTRIBUTING.md`, and `CODEOWNERS` if present.
+   - Summarize each to under 500 tokens before storing.
+   - `CODEOWNERS` yields the key maintainer list.
+
+3. **Map the file tree**
+   - Fetch the directory structure to a depth of 2.
+   - Identify `src/`, `lib/`, `tests/`, `docs/`, `examples/`.
+   - Store as `architecture_snapshot`, discarding the raw tree.
+
+4. **Triage open issues**
+   - Query labels `good-first-issue`, `help-wanted`, `beginner`.
+   - Restrict to issues opened or commented on within 90 days.
+   - Keep the top 10 with id, title, URL, labels, days open, and comment count.
+   - Comment count is required; `skill-matcher` uses it for the
+     `collab:guided` adjustment.
+
+5. **Check PR activity**
+   - Fetch the last 20 merged PRs and compute average time-to-merge.
+   - Flag repositories averaging over 30 days as slow-moving.
+
+6. **Verify**
+   - Warn if no `good-first-issue` candidates were found.
+     This is a warning, not an abort: `skill-matcher` can still rank
+     `help-wanted` issues.
+   - Warn if `architecture_snapshot` resolved fewer than 3 directories.
+
+## References
+
+- `references/github_mcp.md`
+- `scripts/triage_issues.py`

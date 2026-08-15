@@ -1,74 +1,28 @@
 ---
-name: repo-vibe-checker
-description: >-
-  Use this skill when the user wants to assess the health and
-  contributor-friendliness of a GitHub repository. Checks maintainer
-  responsiveness, commit recency, and PR merge rates via the `gh` CLI to
-  produce a "Vibe Check" sentiment summary for new contributors.
+agent: repo-vibe-checker
+position: 5
+consumes: [repo_facts]
+produces: vibe_summary
+tooling: GitHub MCP Server
 ---
 
-# Repo Vibe Checker Skill
+# Repo Vibe Checker
 
-Produces a contributor sentiment report for a GitHub repository. The output
-populates the "Vibe Check" section of the final roadmap.
+Scores contributor-friendliness and maintainer responsiveness.
+Populates the "Vibe Check" section of the roadmap.
+Runs after `github-repo-investigator`, in parallel with `env-setup-validator`.
 
-## Prerequisites
+## Inputs
 
-- `gh` CLI is installed and authenticated.
-- Repository `owner` and `repo` are known (from `github-repo-investigator`).
+| Key | Source | Required |
+|-----|--------|----------|
+| `repo_facts.owner`, `repo_facts.repo` | `github-repo-investigator` | Yes |
 
-## Steps
+Abort with a descriptive error if `repo_facts` is absent.
 
-1. **Check Commit Recency**
-   - Fetch the last 10 commits on the default branch:
-     ```bash
-     gh api repos/{owner}/{repo}/commits --jq '.[0:10] | .[].commit.committer.date'
-     ```
-   - Calculate days since the most recent commit. Thresholds:
-     - ≤ 7 days → 🟢 **Actively maintained**
-     - 8-30 days → 🟡 **Moderate activity**
-     - 31-90 days → 🟠 **Slowing down**
-     - > 90 days → 🔴 **Potentially dormant**
+## Output
 
-2. **Measure Issue Response Time**
-   - Fetch the last 20 issues that have at least one comment:
-     ```bash
-     gh issue list --repo {owner}/{repo} --state all --limit 20 --json number,createdAt,comments
-     ```
-   - For issues with comments, fetch the first comment's timestamp and
-     compute the average gap from `createdAt`. Thresholds:
-     - < 2 days → 🟢 **Very responsive**
-     - 2-7 days → 🟡 **Moderate**
-     - > 7 days → 🔴 **Slow to respond**
-
-3. **Measure PR Merge Rate**
-   - Count merged vs. total closed PRs in the last 90 days:
-     ```bash
-     gh pr list --repo {owner}/{repo} --state closed --limit 50 --json number,mergedAt,closedAt,createdAt
-     ```
-   - A merge rate > 60% is healthy. Flag > 30% closed-without-merge as
-     "high rejection risk."
-
-4. **Check for New Contributor Welcome Signals**
-   - Presence of `CONTRIBUTING.md` → ✅ +1
-   - Presence of `good first issue` label in active issues → ✅ +1
-   - Presence of `.github/ISSUE_TEMPLATE/` → ✅ +1
-   - Presence of `CODE_OF_CONDUCT.md` → ✅ +1
-   - Score: 4/4 = "Welcoming", 2-3/4 = "Moderate", < 2/4 = "Unfriendly"
-
-5. **Compose the Vibe Check Summary**
-   - Combine all signals into a 2-3 sentence natural-language summary, e.g.:
-     _"This repo is actively maintained (last commit 2 days ago) and
-     maintainers respond to issues within 1 day on average. There are 12
-     open good-first-issue tickets and a well-structured CONTRIBUTING.md.
-     Overall vibe: 🟢 Highly welcoming."_
-
-6. **Verify**
-   - Ensure at least 3 of the 4 signals were resolvable via the GitHub API.
-   - If the repo is private or rate-limited, surface a clear error instead
-     of guessing at values.
-
-## Output Schema
+Writes `vibe_summary` to the session state object.
 
 ```json
 {
@@ -82,3 +36,62 @@ populates the "Vibe Check" section of the final roadmap.
   "vibe_summary": "This repo is actively maintained..."
 }
 ```
+
+## Steps
+
+1. **Commit recency**
+   - Fetch the last 10 commits on the default branch.
+   - Compute days since the most recent.
+
+     | Days | Status |
+     |------|--------|
+     | 0 to 7 | 🟢 Actively maintained |
+     | 8 to 30 | 🟡 Moderate activity |
+     | 31 to 90 | 🟠 Slowing down |
+     | over 90 | 🔴 Potentially dormant |
+
+2. **Issue response time**
+   - Fetch the last 20 issues carrying at least one comment.
+   - Average the gap between `created_at` and the first maintainer comment.
+   - Count only comments from users with write access.
+     Contributor replies to each other are not maintainer responsiveness.
+
+     | Days | Status |
+     |------|--------|
+     | under 2 | 🟢 Very responsive |
+     | 2 to 7 | 🟡 Moderate |
+     | over 7 | 🔴 Slow to respond |
+
+3. **PR merge rate**
+   - Compare merged PRs against total closed PRs over the last 90 days.
+   - Above 0.60 is healthy.
+   - Flag above 30 percent closed-without-merge as high rejection risk.
+
+4. **Welcome signals**
+   - `CONTRIBUTING.md` present: +1
+   - `good-first-issue` label in active use: +1
+   - `.github/ISSUE_TEMPLATE/` present: +1
+   - `CODE_OF_CONDUCT.md` present: +1
+
+     | Score | Rating |
+     |-------|--------|
+     | 4 | Welcoming |
+     | 2 to 3 | Moderate |
+     | under 2 | Unfriendly |
+
+5. **Compose the summary**
+   - Two to three sentences combining every signal.
+   - Example: _"This repo is actively maintained (last commit 2 days ago) and
+     maintainers respond to issues within 1 day on average. There are 12 open
+     `good-first-issue` tickets and a well-structured CONTRIBUTING.md.
+     Overall vibe: 🟢 Highly welcoming."_
+
+6. **Verify**
+   - At least 3 of the 4 signal groups resolved.
+   - Abort with a clear error if the repository is private or the API is
+     rate-limited, rather than reporting a partial score as complete.
+
+## References
+
+- `scripts/vibe_check.py`
+- `examples/vibe_output.json`

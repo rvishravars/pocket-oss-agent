@@ -1,65 +1,30 @@
 ---
-name: resume-parser
-description: >-
-  Use this skill when the user asks to parse a developer's resume (PDF or
-  pasted text) and extract a structured technical profile. Outputs languages,
-  frameworks, tools, and seniority level as a structured "Developer Context"
-  object for downstream skills (skill-matcher, contribution-strategy-generator).
+agent: resume-parser
+position: 1
+consumes: [resume_pdf]
+produces: developer_context
+tooling: PDF extraction, LLM, pgvector
 ---
 
-# Resume Parser Skill
+# Resume Parser
 
-Extracts a structured developer profile from a resume. The output feeds into
-the `skill-matcher` and `contribution-strategy-generator` skills.
+Extracts a structured technical profile from an uploaded PDF resume.
+Runs first in the pipeline, in parallel with `github-repo-investigator`.
+Its output personalizes `interviewer-agent` and is a required input to
+`skill-matcher` and `contribution-strategy-generator`.
 
-## Prerequisites
+## Inputs
 
-- A resume is available as a PDF file path, pasted text, or a verbal summary
-  from the user.
+| Source | Value |
+|--------|-------|
+| User upload | Path or object-store URL of the resume PDF |
 
-## Steps
+Abort with a descriptive error if no resume is supplied.
+The pipeline has no fallback profile.
 
-1. **Get the Resume Text**
-   - If given a PDF path, read it directly (the Read tool handles PDFs). If
-     extraction looks garbled on a complex multi-column layout, fall back to
-     a text extraction pass:
-     ```bash
-     pdftotext -layout resume.pdf -    # poppler
-     python3 -c "import pypdf,sys; print('\n'.join(p.extract_text() for p in pypdf.PdfReader(sys.argv[1]).pages))" resume.pdf
-     ```
-     If neither is installed, ask the user to paste the resume text instead.
-   - If given pasted text or a verbal summary, use it as-is.
+## Output
 
-2. **Structure the Profile**
-   - From the resume text, extract:
-     - Programming languages (list)
-     - Frameworks and libraries (list)
-     - Cloud/infra tools (list)
-     - Years of experience (integer or range)
-     - Seniority level: one of `[junior, mid, senior, staff]`
-     - Domain expertise (e.g., backend, frontend, ML, DevOps)
-   - Reason over the text yourself and produce the JSON below directly -
-     no separate extraction call is needed.
-
-3. **Validate the Output**
-   - Ensure the JSON contains all required keys: `languages`, `frameworks`,
-     `tools`, `years_experience`, `seniority`, `domain`.
-   - If the resume is too sparse to fill a field confidently, use a
-     reasonable inferred value and note the uncertainty rather than
-     fabricating specifics.
-
-4. **Hand Off**
-   - Carry the `developer_context` JSON forward in the conversation for use
-     by later phases (`interviewer-agent`, `skill-matcher`,
-     `contribution-strategy-generator`). No database write is needed for
-     this in-context version.
-
-5. **Verify**
-   - Confirm seniority + language list look correct given the source text.
-   - Surface a one-line summary: `"Detected: [seniority] [domain] engineer
-     skilled in [top 3 languages]"`.
-
-## Output Schema
+Writes `developer_context` to the session state object.
 
 ```json
 {
@@ -71,3 +36,54 @@ the `skill-matcher` and `contribution-strategy-generator` skills.
   "domain": "backend"
 }
 ```
+
+## Steps
+
+1. **Extract text from the PDF**
+   - Run the extraction script over the uploaded file:
+     ```bash
+     python scripts/extract_pdf.py <path-to-resume.pdf>
+     ```
+   - Backed by `pdfplumber` or `PyMuPDF`.
+   - Raw text is written to `artifacts/resume_raw.txt`.
+   - Abort if extraction yields fewer than 200 characters.
+     A near-empty result usually means a scanned image resume, which needs OCR
+     rather than a silent empty profile.
+
+2. **Structure the profile with the LLM**
+   - Send the raw text with the extraction prompt:
+     ```
+     You are a technical recruiter. From the resume text below, extract:
+     - Programming languages (list)
+     - Frameworks and libraries (list)
+     - Cloud/infra tools (list)
+     - Years of experience (integer or range)
+     - Seniority level: one of [junior, mid, senior, staff]
+     - Domain expertise (e.g., backend, frontend, ML, DevOps)
+
+     Return strictly as JSON. Resume: {resume_text}
+     ```
+
+3. **Validate the output**
+   - Require all keys: `languages`, `frameworks`, `tools`, `years_experience`,
+     `seniority`, `domain`.
+   - Re-prompt once with the missing fields named explicitly.
+   - Abort if the second attempt is still incomplete.
+
+4. **Persist**
+   - Store `developer_context` against the user session in Postgres.
+   - Generate an embedding over the concatenated profile text and write it to
+     the `developer_profiles` table.
+   - The embedding model must match the one used for `repo_embeddings` and for
+     issue embeddings in `skill-matcher`.
+     A mismatch makes every similarity score meaningless.
+
+5. **Verify**
+   - Log the extracted profile.
+   - Surface a one-line summary to the UI:
+     `"Detected: [seniority] [domain] engineer skilled in [top 3 languages]"`
+
+## References
+
+- `scripts/extract_pdf.py`
+- `examples/parsed_profile.json`

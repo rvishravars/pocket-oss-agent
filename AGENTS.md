@@ -17,16 +17,25 @@ and outputs a single-screen Markdown strategy document.
 ## Agent Pipeline (Execution Order)
 
 ```
-interviewer-agent
-      ↓
-resume-parser ──────────────────────────────────────┐
-                                                     ↓
-github-repo-investigator → repo-vibe-checker → contribution-strategy-generator → 1-Page Roadmap
-         ↓                                           ↑
-  env-setup-validator ─────────────────────────────┤
-         ↓                                           │
-     skill-matcher ───────────────────────────────── ┘
+resume-parser ──────────→ interviewer-agent ─────────────┐
+  (developer_context)        (interview_context)         │
+                                                         ↓
+github-repo-investigator ───────────────────────→ skill-matcher
+  (repo_facts)                                      (top_match)
+        │                                                │
+        ├──→ env-setup-validator (setup_steps) ──────────┤
+        │                                                ↓
+        └──→ repo-vibe-checker (vibe_summary) ──→ contribution-strategy-generator
+                                                         ↓
+                                                   1-Page Roadmap
 ```
+
+`resume-parser` and `github-repo-investigator` have no dependency on each other
+and run in parallel.
+`interviewer-agent` requires `developer_context` to personalize its phrasing, so
+it runs after `resume-parser`, never before.
+`env-setup-validator` and `repo-vibe-checker` both depend only on `repo_facts`
+and run in parallel.
 
 All agent outputs are stored in a **session state object** passed between steps.
 No agent should assume it is the only consumer of its output.
@@ -102,14 +111,14 @@ pocket-oss-agent/
 ├── README.md                  ← public-facing documentation
 ├── specs/
 │   └── agents/                ← production agent specifications
-├── .agents/
-│   └── skills/                ← Antigravity runtime skill definitions
 └── .claude/
     └── commands/              ← Claude Code slash commands (manual prototype)
 ```
 
-`.claude/skills/` is deliberately absent.
-Claude Code skills are development tooling that auto-trigger while writing code,
-so shipping the product's runtime agents there caused them to shadow the real
+`.claude/skills/` and `.agents/skills/` are both deliberately absent.
+Agent skills are development tooling that auto-triggers while writing code, so
+shipping the product's runtime agents there caused them to shadow the real
 implementation during testing.
-The specifications live in `specs/agents/` instead.
+That applies equally to Claude Code and Antigravity.
+The single source of truth is `specs/agents/`, which both assistants can read
+through this file without any auto-trigger behaviour.
