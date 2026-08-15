@@ -167,9 +167,11 @@ def build_setup_steps(
         suffix = f"  # starts {', '.join(services)}" if services else ""
         commands.append(f"docker compose up -d{suffix}")
 
-    commands.append(
-        _test_command(toolchains, package_scripts=package_scripts, make_targets=make_targets)
+    test_command = _test_command(
+        toolchains, package_scripts=package_scripts, make_targets=make_targets
     )
+    if test_command:
+        commands.append(test_command)
 
     return [
         SetupStep(step=index, command=command, status="unverified")
@@ -216,8 +218,14 @@ def has_enough_steps(setup: SetupSteps) -> bool:
 
 def _test_command(
     toolchains: list[Toolchain], *, package_scripts: dict[str, str], make_targets: set[str]
-) -> str:
-    """Pick the command most likely to actually run this project's tests."""
+) -> str | None:
+    """Pick the command most likely to run this project's tests, or None.
+
+    Returns None rather than a placeholder. A previous version emitted
+    "# no test command detected" as the command, which the roadmap then rendered
+    as a numbered shell step with a time estimate beside it, inviting the
+    contributor to paste a comment into their terminal.
+    """
     if "test" in make_targets:
         return "make test"
     if "test" in package_scripts and toolchains:
@@ -226,7 +234,7 @@ def _test_command(
             return runner.test
     if toolchains:
         return toolchains[0].test
-    return "# no test command detected, check CONTRIBUTING.md"
+    return None
 
 
 async def _fetch_if_present(

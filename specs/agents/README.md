@@ -61,6 +61,7 @@ tooling: pgvector
 | `repo-vibe-checker` | Implemented |
 | `env-setup-validator` | Implemented except step 5, the sandboxed dry run |
 | `interviewer-agent` | Implemented |
+| `contribution-strategy-generator` | Implemented |
 | everything else | Specified only |
 
 Reconciled against the production stack described in `AGENTS.md`: pgvector for

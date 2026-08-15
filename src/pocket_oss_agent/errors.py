@@ -70,6 +70,23 @@ class RepositoryUnavailable(PipelineError):
         self.repo = repo
 
 
+class NetworkUnavailable(PipelineError):
+    """GitHub could not be reached: timeout, DNS failure, connection reset.
+
+    Mapped so the client presents one failure surface. Without this a caller
+    catching `PipelineError` still crashes on a raw httpx exception, which is
+    exactly the case a long concurrent fan-out is most likely to hit.
+    """
+
+    def __init__(self, path: str, cause: Exception) -> None:
+        super().__init__(
+            f"Could not reach GitHub for {path}: {type(cause).__name__}. "
+            f"This is usually transient; retry before treating it as a failure."
+        )
+        self.path = path
+        self.cause = cause
+
+
 class RateLimited(PipelineError):
     """The GitHub API rejected the request for rate-limiting reasons."""
 

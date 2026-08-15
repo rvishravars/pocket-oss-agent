@@ -2,6 +2,7 @@
 
 import pytest
 
+from pocket_oss_agent.agents import interviewer
 from pocket_oss_agent.agents.interviewer import (
     CATEGORIES,
     MAX_SUMMARY_WORDS,
@@ -163,3 +164,17 @@ class TestIntentSummary:
             "portfolio", "light", ["bugfix", "docs"], "low"
         )
         assert len(context.intent_summary.split()) <= MAX_SUMMARY_WORDS
+
+
+class TestSummaryTruncationGuard:
+    def test_an_oversized_phrase_is_truncated_not_emitted(self, monkeypatch) -> None:
+        """The phrase maps keep every real combination inside the budget, so
+        this guard is unreachable today. It is pinned because the header that
+        consumes the summary has a fixed line allowance, and a future phrase
+        edit must fail loudly here rather than silently overflow the roadmap.
+        """
+        monkeypatch.setitem(interviewer.GOAL_PHRASES, "portfolio", " ".join(["build"] * 60))
+        summary = interviewer.build_intent_summary("portfolio", "light", ["bugfix"], "low")
+
+        assert len(summary.split()) == interviewer.MAX_SUMMARY_WORDS
+        assert summary.endswith(".")

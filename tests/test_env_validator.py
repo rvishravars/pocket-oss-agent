@@ -180,11 +180,17 @@ class TestBuildSetupSteps:
             self._build(repo, detect_toolchains(repo.root_files))
         )
 
-    def test_unknown_toolchain_still_produces_a_usable_guide(self) -> None:
-        repo = facts("README.md")
-        steps = self._build(repo, [])
-        assert commands(steps)[-1].startswith("# no test command detected")
-        assert has_enough_steps(SetupSteps(setup_steps=steps))
+    def test_unknown_toolchain_emits_no_placeholder_command(self) -> None:
+        """Regression: a "# no test command detected" comment was emitted as a
+        command, which the roadmap rendered as a numbered shell step with a time
+        estimate, inviting the contributor to paste a comment into a terminal.
+        """
+        steps = self._build(facts("README.md"), [])
+        assert not any(c.lstrip().startswith("#") for c in commands(steps))
+        assert commands(steps) == [
+            "git clone https://github.com/octo/widget",
+            "cd widget",
+        ]
 
     def test_polyglot_repo_installs_each_toolchain(self) -> None:
         repo = facts("package.json", "requirements.txt")
@@ -192,9 +198,17 @@ class TestBuildSetupSteps:
         assert "npm install" in text
         assert "pip install -r requirements.txt" in text
 
-    def test_guides_always_clear_the_minimum_length(self) -> None:
-        repo = facts("README.md")
-        assert has_enough_steps(SetupSteps(setup_steps=self._build(repo, [])))
+    def test_undetected_toolchain_fails_the_minimum_length_check(self) -> None:
+        """Honest signal: clone and cd is not a setup guide, and the spec's
+        three step floor is what surfaces that rather than padding it out.
+        """
+        assert not has_enough_steps(SetupSteps(setup_steps=self._build(facts("README.md"), [])))
+
+    def test_a_detected_toolchain_clears_the_minimum(self) -> None:
+        repo = facts("pyproject.toml")
+        assert has_enough_steps(
+            SetupSteps(setup_steps=self._build(repo, detect_toolchains(repo.root_files)))
+        )
 
 
 class TestValidateSetupNeedsNoRequestsForAPlainRepo:
@@ -210,3 +224,45 @@ class TestValidateSetupNeedsNoRequestsForAPlainRepo:
         assert setup.package_manager == "go"
         assert setup.has_docker is False
         assert has_enough_steps(setup)
+
+
+class TestTestCommandSelection:
+    def test_package_json_test_script_drives_the_js_runner(self) -> None:
+        repo = facts("package.json", "yarn.lock")
+        steps = build_setup_steps(
+            repo,
+            detect_toolchains(repo.root_files),
+            services=[],
+            compose_file=None,
+            package_scripts={"test": "jest"},
+            make_targets=set(),
+        )
+        assert commands(steps)[-1] == "yarn test"
+
+    def test_a_test_script_does_not_hijack_a_non_js_project(self) -> None:
+        repo = facts("go.mod")
+        steps = build_setup_steps(
+            repo,
+            detect_toolchains(repo.root_files),
+            services=[],
+            compose_file=None,
+            package_scripts={"test": "jest"},
+            make_targets=set(),
+        )
+        assert commands(steps)[-1] == "go test ./..."
+
+
+class TestFileFetching:
+    async def test_fetches_only_the_config_files_that_exist(self) -> None:
+        requested: list[str] = []
+
+        class RecordingClient:
+            async def get_file_text(self, owner, repo, path):
+                requested.append(path)
+                return "services:\n  db:\n    image: postgres\n"
+
+        setup = await validate_setup(facts("docker-compose.yml", "go.mod"), RecordingClient())
+
+        assert requested == ["docker-compose.yml"]
+        assert setup.docker_services == ["db"]
+        assert setup.has_docker is True
