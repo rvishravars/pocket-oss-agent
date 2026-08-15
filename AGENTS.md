@@ -40,6 +40,11 @@ and run in parallel.
 All agent outputs are stored in a **session state object** passed between steps.
 No agent should assume it is the only consumer of its output.
 
+`graph.py` implements this as a LangGraph DAG.
+The interview is the one step needing a human mid-run, so the graph interrupts
+there and a checkpointer holds the state across the HTTP request that answers it.
+Everything on the repository branch keeps running while it waits.
+
 ---
 
 ## Session State Schema
@@ -109,6 +114,10 @@ pocket-oss-agent/
 ├── CLAUDE.md                  ← Claude-specific rules, imports AGENTS.md
 ├── idea.md                    ← original product specification
 ├── README.md                  ← public-facing documentation
+├── src/pocket_oss_agent/
+│   ├── graph.py               ← LangGraph orchestration of the seven agents
+│   ├── api.py                 ← FastAPI surface over the graph
+│   └── agents/                ← the seven agent implementations
 ├── specs/
 │   └── agents/                ← production agent specifications
 └── .claude/
