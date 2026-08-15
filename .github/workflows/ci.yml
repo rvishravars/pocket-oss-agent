@@ -58,11 +58,14 @@ jobs:
 
       - name: pytest
         env:
-          # The suite mocks GitHub with respx and must never reach the network.
-          # Blanking the token means a test that slips past its mock fails as
-          # unauthenticated rather than quietly passing against live data.
+          # The suite mocks every external service and must never reach the
+          # network. Blanking these means a test that slips past its fake fails
+          # as unauthenticated rather than quietly passing against live data,
+          # and in Anthropic's case rather than spending real money.
           # Scoped to this step so actions/checkout keeps its own token.
           GITHUB_TOKEN: ""
+          ANTHROPIC_API_KEY: ""
+          ANTHROPIC_AUTH_TOKEN: ""
         run: pytest -q --cov --junit-xml=results-${{ matrix.python-version }}.xml
 
       - name: Upload results
