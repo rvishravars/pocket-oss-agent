@@ -5,11 +5,12 @@
 **Your AI-powered co-pilot for open-source contribution.**  
 Drop your resume. Pick a repo. Get a personalized, one-page contribution roadmap in seconds.
 
+[![CI](https://github.com/rvishravars/pocket-oss-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/rvishravars/pocket-oss-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-violet.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python&logoColor=white)](https://python.org)
 [![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph-orange)](https://github.com/langchain-ai/langgraph)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL+pgvector-336791?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
-[![GitHub MCP](https://img.shields.io/badge/Tooling-GitHub%20MCP%20Server-181717?logo=github&logoColor=white)](https://github.com/github/github-mcp-server)
+[![GitHub API](https://img.shields.io/badge/Tooling-GitHub%20REST%20API-181717?logo=github&logoColor=white)](https://docs.github.com/rest)
 
 </div>
 
@@ -167,6 +168,23 @@ tooling for a coding assistant:
 - [ ] Streamlit MVP demo
 - [ ] Next.js production UI
 - [ ] Auth (Google OAuth 2.0)
+
+---
+
+## 🧪 Development
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+
+pytest -q                 # 174 tests, fully offline via respx
+ruff check . && ruff format --check .
+```
+
+Supported on Python 3.11 through 3.14.
+The test suite mocks every GitHub call, so no token is needed and CI never
+touches the network.
+Running the agents against a real repository does need `GITHUB_TOKEN` set.
 
 ---
 
