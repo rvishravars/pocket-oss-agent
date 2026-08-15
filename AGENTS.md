@@ -74,17 +74,21 @@ Each agent reads from and writes to a shared session object:
 
 ---
 
-## Agent Skills Reference
+## Agent Specifications
 
-| Skill | File | Tooling |
-|-------|------|---------|
-| `interviewer-agent` | `.agents/skills/interviewer-agent/SKILL.md` | UI chat/form |
-| `resume-parser` | `.agents/skills/resume-parser/SKILL.md` | PDF extraction, LLM |
-| `github-repo-investigator` | `.agents/skills/github-repo-investigator/SKILL.md` | GitHub MCP Server |
-| `skill-matcher` | `.agents/skills/skill-matcher/SKILL.md` | pgvector |
-| `env-setup-validator` | `.agents/skills/env-setup-validator/SKILL.md` | GitHub MCP Server |
-| `repo-vibe-checker` | `.agents/skills/repo-vibe-checker/SKILL.md` | GitHub MCP Server |
-| `contribution-strategy-generator` | `.agents/skills/contribution-strategy-generator/SKILL.md` | LLM |
+These are specifications for the production agents, not tooling for the coding agent.
+They are the contract that the Python implementation is written against.
+See `specs/agents/README.md` for provenance and open reconciliation work.
+
+| Agent | Spec | Production Tooling |
+|-------|------|--------------------|
+| `interviewer-agent` | `specs/agents/interviewer-agent.md` | UI chat/form |
+| `resume-parser` | `specs/agents/resume-parser.md` | PDF extraction, LLM |
+| `github-repo-investigator` | `specs/agents/github-repo-investigator.md` | GitHub MCP Server |
+| `skill-matcher` | `specs/agents/skill-matcher.md` | pgvector |
+| `env-setup-validator` | `specs/agents/env-setup-validator.md` | GitHub MCP Server |
+| `repo-vibe-checker` | `specs/agents/repo-vibe-checker.md` | GitHub MCP Server |
+| `contribution-strategy-generator` | `specs/agents/contribution-strategy-generator.md` | LLM |
 
 ---
 
@@ -93,12 +97,19 @@ Each agent reads from and writes to a shared session object:
 ```
 pocket-oss-agent/
 ├── AGENTS.md                  ← this file (shared context)
-├── GEMINI.md                  ← Antigravity-specific rules
-├── CLAUDE.md                  ← Claude-specific rules
+├── CLAUDE.md                  ← Claude-specific rules, imports AGENTS.md
 ├── idea.md                    ← original product specification
 ├── README.md                  ← public-facing documentation
+├── specs/
+│   └── agents/                ← production agent specifications
 ├── .agents/
-│   └── skills/                ← Antigravity agent skill definitions
+│   └── skills/                ← Antigravity runtime skill definitions
 └── .claude/
-    └── commands/              ← Claude Code slash commands
+    └── commands/              ← Claude Code slash commands (manual prototype)
 ```
+
+`.claude/skills/` is deliberately absent.
+Claude Code skills are development tooling that auto-trigger while writing code,
+so shipping the product's runtime agents there caused them to shadow the real
+implementation during testing.
+The specifications live in `specs/agents/` instead.
