@@ -100,7 +100,8 @@ rather than being rediscovered one spec at a time.
 | `env-setup-validator` | Implemented except step 5, the sandboxed dry run |
 | `interviewer-agent` | Implemented |
 | `contribution-strategy-generator` | Implemented |
-| everything else | Specified only |
+| `resume-parser` | Implemented; the live Claude call is unverified |
+| `skill-matcher` | Implemented; thresholds unvalidated |
 
 Reconciled against the production stack described in `AGENTS.md`: pgvector for
 similarity search, and the session state object for handoff between nodes.

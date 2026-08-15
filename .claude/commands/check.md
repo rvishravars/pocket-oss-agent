@@ -24,5 +24,14 @@ grep -rn "$(printf '\xe2\x80\x94')" --include='*.md' --include='*.py' \
   local check reported clean while CI failed on the same commit.
 - The suite is fully offline. A test that reaches the network is a bug in the
   test, not a reason to set a token.
+- CI blanks `GITHUB_TOKEN`, `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` for
+  the pytest step. Locally your shell probably has them, so a test that escapes
+  its fake would make a real, billable call rather than failing. Run
+  `env ANTHROPIC_API_KEY= ANTHROPIC_AUTH_TOKEN= GITHUB_TOKEN= pytest -q --cov`
+  to reproduce CI conditions exactly.
+- Tests marked `live` call a paid API and are deselected everywhere by default,
+  including locally. Run them deliberately with `pytest -m live`, and only when
+  you mean to spend money. They are the only way to check that the request shape
+  actually reaches the model, which no fake can prove.
 - Green here is necessary, not sufficient. Run `/run-pipeline` before trusting a
   change that touches agent behaviour.

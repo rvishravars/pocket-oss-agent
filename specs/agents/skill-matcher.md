@@ -3,7 +3,8 @@ agent: skill-matcher
 position: 6
 consumes: [developer_context, interview_context, repo_facts]
 produces: top_match
-tooling: pgvector
+tooling: local embeddings + pgvector
+status: implemented
 ---
 
 # Skill Matcher
@@ -79,12 +80,19 @@ Writes `top_match` to the session state object.
      exceeds 4 hours.
      Most repositories carry no effort labels, so this filter applies only
      where the label exists and must not discard unlabelled issues.
+   - The same rule governs type filtering: an issue carrying no recognised type
+     label survives. Absent labels mean the repo does not use that vocabulary,
+     not that the issue is unsuitable, and dropping them empties most candidate
+     sets.
    - Record every filter applied in `filters_applied`.
    - If filtering empties the candidate set, skip to step 6 and report no
      match rather than silently relaxing the filters.
 
 3. **Generate issue embeddings**
-   - For each surviving candidate, embed `title + body[:200]`.
+   - For each surviving candidate, embed `title + labels`. The spec originally
+     said `title + body[:200]`, but `repo_facts` never carries issue bodies:
+     the investigator's token budget forbids them. Labels are the available
+     stand-in.
    - Use the model named in the prerequisites.
    - These are request-scoped and need not be persisted.
 
@@ -118,6 +126,31 @@ Writes `top_match` to the session state object.
 
 7. **Verify**
    - A top score above 0.65 is a confident match.
+   - **The 0.40 and 0.65 thresholds are miscalibrated and must be retuned
+     before this ships.** They were written before any embedding model was
+     chosen, and cosine similarity is scale-dependent, so they do not transfer.
+
+     Measured with `all-MiniLM-L6-v2` against the profile
+     `Python, Go, FastAPI, Django, Docker, AWS, backend`:
+
+     | Issue | Similarity |
+     |-------|-----------|
+     | Add support for an async Python client | 0.358 |
+     | Improve Docker Compose setup for local dev | 0.332 |
+     | Fix Go module resolution in the build | 0.190 |
+     | Update the CSS on the documentation site | 0.083 |
+     | Translate the README into Japanese | 0.015 |
+
+     The **ordering is correct** and clearly separates relevant from irrelevant.
+     The **absolute floor is roughly twice too high**: the best match on
+     langchain-ai/langchain scored 0.3412, so the roadmap fell back to
+     browse-manually. As written these thresholds make the product's core
+     feature never fire on any repo.
+
+     On this evidence a floor near 0.25 admits the relevant issues and still
+     rejects the noise, with "confident" near 0.35. Both live in named constants
+     (`MINIMUM_SCORE`, `CONFIDENT_SCORE`) so retuning is a one-line change, and
+     the numbers above should be reproduced on a wider sample first.
    - When no issue scores above 0.4, emit the warning
      `"No strong match found, recommend browsing issues manually."`
      and leave `top_match` null.
