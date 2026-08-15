@@ -37,7 +37,7 @@ Login → Upload Resume → Interview → Pick Repo → Agentic Analysis → 1-P
 
 | Step | What happens |
 |------|-------------|
-| 1. **Authentication** | Secure login via Google OAuth 2.0 |
+| 1. **Authentication** | Google OAuth 2.0 *(planned, not built)* |
 | 2. **Profile Ingestion** | AI parses your PDF resume into a structured Developer Context |
 | 3. **Interactive Discovery** | Interviewer Agent clarifies your goals, time budget, and preferences |
 | 4. **Project Selection** | You provide any public GitHub repository URL |
@@ -48,55 +48,70 @@ Login → Upload Resume → Interview → Pick Repo → Agentic Analysis → 1-P
 
 ## 🤖 Agent Architecture
 
-The system uses **seven specialized agents**, to be orchestrated via [LangGraph](https://github.com/langchain-ai/langgraph):
+Seven specialized agents, orchestrated as a [LangGraph](https://github.com/langchain-ai/langgraph) DAG behind a FastAPI service:
 
 ```mermaid
 graph TD
-    User[Developer] -->|Login| Auth[Google Auth]
-    User -->|Interview| Intv[Interviewer Agent]
-    User -->|Upload| Resume[PDF Resume]
-    User -->|Link| Repo[GitHub URL]
+    Client[Client] -->|POST /sessions| Start(( ))
+    Start --> Parse[resume-parser]
+    Start --> Inv[github-repo-investigator]
 
-    subgraph "Data & Tooling"
-    DB[(Postgres + pgvector)]
-    API[GitHub API]
-    end
+    Parse --> Intv[interviewer-agent]
+    Intv -.->|graph pauses| Wait{{POST /interview}}
+    Wait -.->|resumes| Match
 
-    subgraph "AI Orchestration"
-    Orch[Orchestrator Agent]
-    Pars[Resume Agent]
-    Gen[Strategy Agent]
-    end
+    Inv --> Setup[env-setup-validator]
+    Inv --> Vibe[repo-vibe-checker]
+    Inv --> Match[skill-matcher]
+    Intv --> Match
 
-    Intv --> Orch
-    Resume --> Pars
-    Pars --> DB
-    Repo --> API
-    Orch --> API & DB
-    Gen -->|AI Core| Output[1-Page Roadmap]
+    Match --> Road[contribution-strategy-generator]
+    Setup --> Road
+    Vibe --> Road
+    Road -->|GET /roadmap| Output[1-Page Roadmap]
+
+    Parse -.-> LLM[Claude Haiku 4.5]
+    Inv -.-> GH[GitHub REST API]
+    Match -.-> Vec[(Vector store)]
 ```
+
+The interview is the only step needing a human mid-run, so the graph interrupts
+there and a checkpointer holds the state across the request that answers it.
+The whole repository branch keeps running while it waits.
 
 | Agent | Role | Status |
 |-------|------|--------|
-| **Resume Parser** | Extracts name, languages, frameworks, seniority and domain from a PDF | Spec only |
+| **Resume Parser** | Extracts name, languages, frameworks, seniority and domain from a PDF | ✅ Built |
 | **Interviewer** | Asks 4 to 5 targeted questions to capture contribution intent | ✅ Built |
 | **Repo Investigator** | Builds a repo fact sheet: layout, candidate issues, PR velocity | ✅ Built |
 | **Env Setup Validator** | Detects the toolchain and drafts the First Mile guide | ✅ Built |
 | **Vibe Checker** | Scores maintainer responsiveness and welcome signals | ✅ Built |
-| **Skill Matcher** | Ranks candidate issues against the developer profile | Spec only |
+| **Skill Matcher** | Ranks candidate issues against the developer profile | ✅ Built |
 | **Strategy Generator** | Weaves all signals into the final one-page roadmap | ✅ Built |
 
-Five of the seven are implemented with 100% test coverage.
-The two outstanding ones need Postgres, pgvector and an LLM.
-State is threaded between them by hand today; LangGraph orchestration is not
-wired up yet.
+All seven are implemented with 100% test and branch coverage, wired into the
+graph and reachable over HTTP.
+
+Two known gaps, both recorded in the specs rather than papered over:
+
+- **Issue matching does not fire yet.** The similarity floor inherited from the
+  spec is roughly twice too high: measured against real repositories the best
+  match scores about 0.34 against a 0.40 cutoff, so every roadmap currently
+  falls back to browsing issues manually. The ranking itself is correct and
+  separates relevant from irrelevant cleanly; it is the cutoff that needs
+  calibrating. See `specs/agents/skill-matcher.md`.
+- **Setup steps are never marked verified**, because executing an untrusted
+  repository's own install commands needs a sandbox that does not exist yet.
 
 ---
 
 ## 🌟 Core Features
 
 ### 🧠 Intelligent Skill Matching
-Uses **pgvector** to run semantic similarity searches between your resume profile + interview answers and open GitHub issues - not just keyword matching.
+Semantic similarity between your resume profile plus interview answers and the
+repository's open issues, not just keyword matching. The store sits behind a
+protocol: in-memory by default, `pgvector` for production. Note the cutoff is
+still being calibrated, so matching is not yet returning a pick on real repos.
 
 ### 🔍 Token-Efficient GitHub Access
 Agents summarize repository data (issue lists, file trees, PR history) before any of it reaches an LLM. Nodes that fetch a fixed sequence deterministically use the GitHub REST API directly; the MCP Server is reserved for paths where an LLM chooses its own tools.
@@ -143,11 +158,12 @@ never reported verified without having been executed:
 
 | Layer | Technology |
 |-------|-----------|
-| **AI Model** | State-of-the-art high-reasoning model |
+| **AI Model** | Claude Haiku 4.5 for resume extraction (single-shot structured output) |
 | **Orchestration** | Python · FastAPI · LangGraph |
-| **Database** | PostgreSQL + `pgvector` extension |
+| **Embeddings** | sentence-transformers, behind a protocol *(optional extra)* |
+| **Database** | PostgreSQL + `pgvector` *(implemented, not yet exercised against a live database)* |
 | **GitHub Tooling** | GitHub REST API; MCP Server where an LLM picks tools |
-| **UI** | Streamlit or Next.js |
+| **UI** | Streamlit or Next.js *(planned)* |
 
 ---
 
@@ -162,7 +178,7 @@ tooling for a coding assistant:
 | [`interviewer-agent`](specs/agents/interviewer-agent.md) | Dynamic pre-analysis discovery interview |
 | [`resume-parser`](specs/agents/resume-parser.md) | Structured developer profile extraction from PDF |
 | [`github-repo-investigator`](specs/agents/github-repo-investigator.md) | Deep repo analysis via the GitHub API |
-| [`skill-matcher`](specs/agents/skill-matcher.md) | pgvector semantic issue matching with interview filters |
+| [`skill-matcher`](specs/agents/skill-matcher.md) | Semantic issue matching with interview filters |
 | [`env-setup-validator`](specs/agents/env-setup-validator.md) | Auto-detect toolchain + generate First Mile setup |
 | [`repo-vibe-checker`](specs/agents/repo-vibe-checker.md) | Contributor-friendliness sentiment analysis |
 | [`contribution-strategy-generator`](specs/agents/contribution-strategy-generator.md) | Weaves all outputs into the final 1-page roadmap |
@@ -176,10 +192,12 @@ tooling for a coding assistant:
 - [x] `env-setup-validator` - toolchain detection and First Mile guide
 - [x] `interviewer-agent` - headless discovery interview
 - [x] `contribution-strategy-generator` - the one-page roadmap
-- [ ] `resume-parser` - PDF extraction + pgvector embeddings
-- [ ] `skill-matcher` - semantic issue matching
-- [ ] Sandboxed dry run, so setup steps can be marked verified
+- [x] `resume-parser` - PDF extraction + Claude structured output
+- [x] `skill-matcher` - semantic issue matching
 - [x] LangGraph orchestration + FastAPI
+- [ ] Calibrate the similarity threshold, so matching actually returns a pick
+- [ ] Sandboxed dry run, so setup steps can be marked verified
+- [ ] Postgres checkpointer and pgvector against a live database
 - [ ] Streamlit MVP demo, then Next.js production UI
 - [ ] Auth (Google OAuth 2.0)
 
@@ -194,7 +212,27 @@ pip install -e ".[dev]"
 pytest -q                 # fully offline: no API key, no model download, no database
 pytest -m live            # opt in to the paid-API checks (deselected by default)
 ruff check . && ruff format --check .
+
+uvicorn pocket_oss_agent.api:create_app --factory --reload   # serve the API
 ```
+
+### The API
+
+The interview needs a human mid-run, so a session is a resource that spans two
+requests:
+
+| Endpoint | Does |
+|----------|------|
+| `POST /sessions` | Start a run. Returns a session id and the interview questions |
+| `GET /sessions/{id}` | Status, plus the questions while paused |
+| `POST /sessions/{id}/interview` | Submit answers; resumes the graph |
+| `GET /sessions/{id}/roadmap` | The finished Markdown |
+
+Repository analysis, the vibe check and setup detection all run while the
+interview waits, so answering is the only thing on the critical path.
+
+Inputs the caller got wrong return `422` (unreadable resume, malformed repo
+URL); asking for a roadmap before answering returns `409`.
 
 Supported on Python 3.11 through 3.14.
 
