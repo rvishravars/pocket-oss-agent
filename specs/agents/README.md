@@ -90,6 +90,30 @@ rather than being rediscovered one spec at a time.
   Adding `DeveloperContext.name` for the roadmap header meant `resume-parser`
   had to start extracting it. A field is not real until the agent that produces
   it says so.
+- **A threshold written before the measurement is a guess.**
+  Both numeric thresholds in this system were wrong when first measured: the
+  0.60 merge rate flags healthy projects as risky, and the 0.40 similarity floor
+  is roughly twice too high, so the matcher never fires. Cosine similarity and
+  merge rates are scale-dependent on the model or corpus behind them. Keep every
+  threshold in a named constant, measure it against real data before trusting
+  it, and record the measurement next to the number.
+- **Ordering can be right while the threshold is wrong.**
+  The matcher ranks relevant issues above irrelevant ones cleanly and still
+  returns nothing, because the cutoff sits above the whole range. Check the
+  ranking and the cutoff separately; a correct ranking says nothing about
+  whether the gate is calibrated.
+- **Pick the cheapest model tier that supports the feature.**
+  Where a step is single-shot and its inputs fully determine its output, there
+  is no reasoning or tool use to lose by dropping a tier. Resume extraction runs
+  on Haiku at roughly a fifth of Opus cost. Keep the model a constructor
+  argument so a route needing more can pass one.
+- **Everything in a schema is sent to the model.**
+  A Pydantic model's class docstring becomes the schema description on every
+  call. Write it for the model; implementation rationale belongs in a comment,
+  where it costs no tokens.
+- **Check `stop_reason` before reading content.**
+  A refusal returns HTTP 200 with empty or partial content, so reading the
+  parsed output first turns a policy decline into an unrelated attribute error.
 
 ## Status
 

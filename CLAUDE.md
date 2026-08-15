@@ -25,6 +25,35 @@ Claude-only rules belong in this file.
 - Apply that same high standard to engineering excellence: lint, test failures, and test flakiness.
   If you see one, even if it is not caused by what you are working on right now, still get it fixed.
 
+## Testing and Cost
+
+- Every external service sits behind an injected protocol: `ProfileExtractor`
+  for the LLM, `EmbeddingProvider` for vectors, `VectorStore` for persistence,
+  `GitHubClient` for the API.
+  Tests supply fakes, so the suite needs no API key, no model download and no
+  database, and CI cannot spend money.
+  A test that reaches the network is a bug in the test, not a reason to set a
+  token.
+- Tests that call a paid API carry the `live` marker and are deselected by
+  default **everywhere**, not only in CI.
+  Your shell usually carries the key, so defaulting to off locally matters as
+  much as in CI: spending money should be a choice, not something discovered
+  afterwards.
+  Run them deliberately with `pytest -m live`.
+- The pytest step blanks `GITHUB_TOKEN`, `ANTHROPIC_API_KEY` and
+  `ANTHROPIC_AUTH_TOKEN` so a test that escapes its fake fails as
+  unauthenticated rather than quietly passing against live data.
+- Heavy dependencies are optional extras, never required.
+  `sentence-transformers` pulls in torch, which is far too heavy to install on
+  four Python versions in CI.
+- Coverage is gated at 100% of statements and branches.
+  When a new branch is uncovered, prefer deleting the dead branch over writing a
+  contrived test for it.
+- Green here is necessary, not sufficient.
+  Every significant bug in this codebase passed its mocked tests first.
+  Run `/run-pipeline` against a real repository before trusting a change that
+  touches agent behaviour.
+
 ## Skills
 
 This repository has no `.claude/skills/` directory, and that is intentional.
