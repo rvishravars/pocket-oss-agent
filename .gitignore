@@ -1,4 +1,9 @@
 # Python
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
 __pycache__/
 *.py[cod]
 *.pyo
