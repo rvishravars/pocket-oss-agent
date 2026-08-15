@@ -3,7 +3,8 @@ agent: resume-parser
 position: 1
 consumes: [resume_pdf]
 produces: developer_context
-tooling: PDF extraction, LLM, pgvector
+tooling: pypdf, Claude structured outputs, pgvector
+status: implemented
 ---
 
 # Resume Parser
@@ -42,16 +43,20 @@ Writes `developer_context` to the session state object.
 
 1. **Extract text from the PDF**
    - Run the extraction script over the uploaded file:
-     ```bash
-     python scripts/extract_pdf.py <path-to-resume.pdf>
-     ```
-   - Backed by `pdfplumber` or `PyMuPDF`.
-   - Raw text is written to `artifacts/resume_raw.txt`.
+   - Backed by `pypdf`, called in process. There is no extraction script and no
+     `artifacts/` file: the text goes straight to the extractor, so nothing has
+     to be cleaned up and no stale intermediate can be read by mistake.
    - Abort if extraction yields fewer than 200 characters.
      A near-empty result usually means a scanned image resume, which needs OCR
      rather than a silent empty profile.
 
 2. **Structure the profile with the LLM**
+   - One `messages.parse()` call against `claude-opus-5` with a Pydantic schema
+     attached. Not an agent loop: the inputs fully determine the output.
+   - Check `stop_reason` before reading the parsed output. A refusal returns
+     HTTP 200 with empty content, so reading the profile first turns a policy
+     decline into an unrelated attribute error.
+   - Send no sampling parameters; they are rejected on this model.
    - Send the raw text with the extraction prompt:
      ```
      You are a technical recruiter. From the resume text below, extract:

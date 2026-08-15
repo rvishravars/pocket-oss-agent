@@ -7,8 +7,9 @@ assumption. This is the harness for that check.
 
     GITHUB_TOKEN=$(gh auth token) python scripts/run_pipeline.py pallets/flask
 
-`resume-parser` and `skill-matcher` are not built yet, so their outputs are
-stand-ins, marked below. Everything else is the real agent.
+All seven agents are real. `resume-parser` runs only when `--resume` is given,
+since it needs an API key; without it the stand-in profile below is used so the
+rest of the pipeline stays runnable.
 """
 
 from __future__ import annotations
@@ -21,13 +22,17 @@ import sys
 from pocket_oss_agent.agents.env_validator import validate_setup
 from pocket_oss_agent.agents.interviewer import conduct_interview
 from pocket_oss_agent.agents.repo_investigator import investigate
+from pocket_oss_agent.agents.resume_parser import parse_resume
+from pocket_oss_agent.agents.skill_matcher import is_confident, match_issues
 from pocket_oss_agent.agents.strategy_generator import generate_roadmap, verify_roadmap
 from pocket_oss_agent.agents.vibe_checker import check_vibe
+from pocket_oss_agent.embeddings import DeterministicEmbeddings
 from pocket_oss_agent.errors import PipelineError
 from pocket_oss_agent.github_client import GitHubClient
-from pocket_oss_agent.state import DeveloperContext, SessionState, TopMatch
+from pocket_oss_agent.llm import ClaudeProfileExtractor
+from pocket_oss_agent.state import DeveloperContext, SessionState
 
-# --- stand-ins for the two unbuilt agents ------------------------------------
+# --- stand-in profile, used when no resume is supplied -----------------------
 
 STAND_IN_DEVELOPER = DeveloperContext(
     name="Ada Okafor",
@@ -48,32 +53,41 @@ STAND_IN_ANSWERS = {
 }
 
 
-def stand_in_top_match(repo_facts) -> TopMatch | None:
-    """What `skill-matcher` will eventually choose.
-
-    Takes the freshest candidate rather than ranking, so the roadmap has
-    something real to render. Returns None when the repo labels nothing, which
-    exercises the browse-manually fallback.
-    """
-    if not repo_facts.good_first_issues:
-        return None
-    issue = repo_facts.good_first_issues[0]
-    return TopMatch(
-        issue_id=issue.id,
-        title=issue.title,
-        url=issue.url,
-        score=0.81,
-        rationale=(
-            "You have 5 years of Python experience. Matches your stated goal at your stated pace."
-        ),
-    )
-
-
 # --- pipeline ----------------------------------------------------------------
 
 
-async def run(repo: str, *, answers: dict | None = None) -> int:
-    state = SessionState(user_id="local", developer_context=STAND_IN_DEVELOPER)
+def build_embeddings(prefer_real: bool):
+    """Return the embedder to rank with, and whether it is semantic.
+
+    `DeterministicEmbeddings` hashes tokens; it is not semantic, so similarity
+    between a skills list and an issue title lands far below the spec's 0.40
+    floor and every repo falls back to browse-manually. That is a property of
+    the stand-in, not of the repo, so the harness says which one ran.
+    """
+    if prefer_real:
+        try:
+            from pocket_oss_agent.embeddings import SentenceTransformerEmbeddings
+
+            return SentenceTransformerEmbeddings(), True
+        except ImportError as exc:
+            print(f"note: {exc}", file=sys.stderr)
+    return DeterministicEmbeddings(), False
+
+
+async def run(
+    repo: str,
+    *,
+    answers: dict | None = None,
+    resume: str | None = None,
+    real_embeddings: bool = False,
+) -> int:
+    # resume-parser runs for real when given a PDF; otherwise the stand-in
+    # profile keeps the rest of the pipeline runnable without an API key.
+    developer = STAND_IN_DEVELOPER
+    if resume:
+        developer = parse_resume(resume, ClaudeProfileExtractor())
+
+    state = SessionState(user_id="local", developer_context=developer)
     state.interview_context = conduct_interview(
         state.developer_context, answers or STAND_IN_ANSWERS
     )
@@ -83,7 +97,13 @@ async def run(repo: str, *, answers: dict | None = None) -> int:
         state.vibe_summary = await check_vibe(state.repo_facts, client)
         state.setup_steps = await validate_setup(state.repo_facts, client)
 
-    state.top_match = stand_in_top_match(state.repo_facts)
+    embeddings, is_semantic = build_embeddings(real_embeddings)
+    state.top_match, filters, ranked = match_issues(
+        state.developer_context,
+        state.interview_context,
+        state.repo_facts,
+        embeddings=embeddings,
+    )
     state.roadmap = generate_roadmap(
         developer_context=state.developer_context,
         interview_context=state.interview_context,
@@ -102,7 +122,24 @@ async def run(repo: str, *, answers: dict | None = None) -> int:
     print(f"lines            : {lines}/60")
     print(f"verifier         : {problems if problems else 'clean'}")
     print(f"candidate issues : {len(state.repo_facts.good_first_issues)}")
+    print(f"filters applied  : {filters or 'none'}")
+    print(f"ranked           : {len(ranked)}")
+    if state.top_match:
+        print(
+            f"top match        : #{state.top_match.issue_id} "
+            f"score={state.top_match.score} confident={is_confident(state.top_match)}"
+        )
+        print(f"  breakdown      : {state.top_match.score_breakdown}")
+    else:
+        best = ranked[0].score if ranked else None
+        print(f"top match        : none (best was {best}, floor is 0.40)")
+        if not is_semantic:
+            print(
+                "                   ^ the stand-in embedder is not semantic, so this "
+                "says nothing about the repo. Re-run with --real-embeddings."
+            )
     print(f"toolchain        : {state.setup_steps.package_manager or 'not detected'}")
+    print(f"embedder         : {embeddings.model_id}{'' if is_semantic else '  (not semantic)'}")
     print(f"session state    : {len(state.model_dump_json())} bytes")
     return 1 if problems else 0
 
@@ -110,6 +147,15 @@ async def run(repo: str, *, answers: dict | None = None) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("repo", help="owner/name or a GitHub URL")
+    parser.add_argument(
+        "--resume", help="path to a PDF resume; runs resume-parser for real (needs an API key)"
+    )
+    parser.add_argument(
+        "--real-embeddings",
+        action="store_true",
+        help="rank with sentence-transformers rather than the stand-in "
+        '(needs the "embeddings" extra)',
+    )
     args = parser.parse_args()
 
     if not os.environ.get("GITHUB_TOKEN"):
@@ -121,7 +167,7 @@ def main() -> int:
         return 2
 
     try:
-        return asyncio.run(run(args.repo))
+        return asyncio.run(run(args.repo, resume=args.resume, real_embeddings=args.real_embeddings))
     except PipelineError as exc:
         print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
         return 1

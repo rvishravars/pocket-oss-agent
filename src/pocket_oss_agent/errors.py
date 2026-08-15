@@ -47,6 +47,43 @@ class UnknownInterviewAnswer(PipelineError):
         self.value = value
 
 
+class ResumeUnreadable(PipelineError):
+    """A resume could not be turned into usable text."""
+
+    def __init__(self, source: str, reason: str) -> None:
+        super().__init__(f"Could not read a resume from {source!r}: {reason}")
+        self.source = source
+        self.reason = reason
+
+
+class ProfileExtractionFailed(PipelineError):
+    """The model did not return a usable profile."""
+
+    def __init__(self, reason: str, detail: str = "") -> None:
+        suffix = f" ({detail})" if detail else ""
+        super().__init__(f"Profile extraction failed: {reason}{suffix}.")
+        self.reason = reason
+        self.detail = detail
+
+
+class EmbeddingModelMismatch(PipelineError):
+    """A store and an embedding provider disagree on the model.
+
+    Vectors from two models occupy unrelated spaces, so comparing them yields
+    confident, meaningless scores that nothing downstream can detect. This is
+    the check `AGENTS.md` requires.
+    """
+
+    def __init__(self, store: str, provider: str) -> None:
+        super().__init__(
+            f"Vector store was built with embedding model {store!r} but the provider "
+            f"is {provider!r}. Comparing vectors across models produces meaningless "
+            f"similarity scores. Re-embed the store, or use the matching provider."
+        )
+        self.store = store
+        self.provider = provider
+
+
 class InvalidRepoURL(PipelineError):
     """The supplied string is not a GitHub repository URL."""
 
