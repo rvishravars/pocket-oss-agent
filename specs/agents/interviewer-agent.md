@@ -3,7 +3,8 @@ agent: interviewer-agent
 position: 2
 consumes: [developer_context]
 produces: interview_context
-tooling: UI chat or form flow
+tooling: headless logic; UI chat or form flow is the delivery layer
+status: implemented
 ---
 
 # Interviewer Agent
@@ -101,6 +102,9 @@ Category E is optional.
    - Opening line: _"Before we dive in, a few quick questions to tailor your roadmap."_
 
 2. **Ask questions sequentially**
+   - The question bank is exposed as data, so a chat client, a web form and a
+     CLI can all drive the same validated logic and the pipeline stays testable
+     without a browser.
    - Present A, B, C, D in order. E is optional.
    - Use the UI's preferred modality: buttons on mobile, dropdown on desktop.
    - Multi-select applies to Category C only.

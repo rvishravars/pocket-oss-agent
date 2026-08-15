@@ -22,6 +22,31 @@ class MissingUpstreamOutput(PipelineError):
         self.key = key
 
 
+class IncompleteInterview(PipelineError):
+    """A mandatory interview category was unanswered."""
+
+    def __init__(self, missing: list[str]) -> None:
+        names = ", ".join(sorted(missing))
+        super().__init__(
+            f"Interview is missing required answers for: {names}. "
+            f"Re-prompt for these rather than assuming a default, since they "
+            f"drive issue filtering and roadmap tone."
+        )
+        self.missing = sorted(missing)
+
+
+class UnknownInterviewAnswer(PipelineError):
+    """An answer did not match any option in its category."""
+
+    def __init__(self, category: str, value: str, allowed: list[str]) -> None:
+        super().__init__(
+            f"{value!r} is not a valid answer for interview category "
+            f"{category!r}. Expected one of: {', '.join(sorted(allowed))}."
+        )
+        self.category = category
+        self.value = value
+
+
 class InvalidRepoURL(PipelineError):
     """The supplied string is not a GitHub repository URL."""
 

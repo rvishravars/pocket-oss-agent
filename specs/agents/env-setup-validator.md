@@ -58,6 +58,10 @@ Writes `setup_steps` to the session state object.
      several. mastodon carries both `Gemfile` and `yarn.lock`, and omitting
      either leaves the contributor without a working install.
    - Recognised ecosystems: js, python, ruby, php, elixir, rust, go, jvm.
+   - Known limitation, shared with the Architecture Snapshot: monorepos nesting
+     their manifests under `libs/` or `packages/` detect nothing, so
+     langchain-ai/langchain yields a null package manager and a guide with no
+     install or test command.
    - Scan for:
      | File | Package Manager |
      |------|----------------|
