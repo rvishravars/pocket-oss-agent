@@ -3,7 +3,7 @@ name: contribution-strategy-generator
 description: >-
   Use this skill when you need to synthesize a developer's profile and
   repository analysis into a final one-page OSS contribution roadmap. This is
-  the final step in the Pocket OSS Agent pipeline — it weaves all upstream
+  the final step in the Pocket OSS Agent pipeline - it weaves all upstream
   outputs into a concise, actionable Markdown strategy document.
 ---
 
@@ -35,9 +35,9 @@ aborting.
    - Use `repo_facts.architecture_snapshot` for a 3-5 bullet summary:
      ```
      ## 🗺️ Architecture Snapshot
-     - `src/` — Core library logic
-     - `tests/` — Unit and integration tests
-     - `docs/` — Documentation (MkDocs)
+     - `src/` - Core library logic
+     - `tests/` - Unit and integration tests
+     - `docs/` - Documentation (MkDocs)
      ```
 
 3. **First Mile Setup Section**
@@ -62,7 +62,7 @@ aborting.
    - Use `vibe_summary` and its raw metrics:
      ```
      ## 💬 Vibe Check
-     🟢 Highly welcoming — last commit 2 days ago, issues answered in ~1 day.
+     🟢 Highly welcoming - last commit 2 days ago, issues answered in ~1 day.
      Maintainer merge rate: 78%. CONTRIBUTING.md and CoC present.
      ```
 
@@ -89,7 +89,7 @@ aborting.
 
 7. **Verify**
    - The document must contain all available sections (fewer if some
-     upstream inputs were missing — never fabricate a section).
+     upstream inputs were missing - never fabricate a section).
    - Total line count ≤ 60.
    - All issue URLs are non-empty strings starting with `https://`.
    - The header includes both `goal` and `time_commitment` if

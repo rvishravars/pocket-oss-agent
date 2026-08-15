@@ -20,9 +20,14 @@ the `skill-matcher` and `contribution-strategy-generator` skills.
 ## Steps
 
 1. **Get the Resume Text**
-   - If given a PDF path, read it directly (the Read tool handles PDFs). For
-     resumes with complex multi-column layouts, defer to the `pdf` skill if
-     extraction looks garbled.
+   - If given a PDF path, read it directly (the Read tool handles PDFs). If
+     extraction looks garbled on a complex multi-column layout, fall back to
+     a text extraction pass:
+     ```bash
+     pdftotext -layout resume.pdf -    # poppler
+     python3 -c "import pypdf,sys; print('\n'.join(p.extract_text() for p in pypdf.PdfReader(sys.argv[1]).pages))" resume.pdf
+     ```
+     If neither is installed, ask the user to paste the resume text instead.
    - If given pasted text or a verbal summary, use it as-is.
 
 2. **Structure the Profile**
@@ -33,7 +38,7 @@ the `skill-matcher` and `contribution-strategy-generator` skills.
      - Years of experience (integer or range)
      - Seniority level: one of `[junior, mid, senior, staff]`
      - Domain expertise (e.g., backend, frontend, ML, DevOps)
-   - Reason over the text yourself and produce the JSON below directly —
+   - Reason over the text yourself and produce the JSON below directly -
      no separate extraction call is needed.
 
 3. **Validate the Output**

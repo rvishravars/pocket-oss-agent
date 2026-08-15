@@ -16,7 +16,7 @@ by `contribution-strategy-generator`, `repo-vibe-checker`,
 ## Prerequisites
 
 - `gh` CLI is installed and authenticated (`gh auth status`). If not
-  authenticated, tell the user to run `gh auth login` first — don't attempt
+  authenticated, tell the user to run `gh auth login` first - don't attempt
   to fetch private-repo data unauthenticated.
 - A valid public GitHub repository URL is provided.
 
@@ -32,7 +32,7 @@ by `contribution-strategy-generator`, `repo-vibe-checker`,
      gh api repos/{owner}/{repo}/readme --jq .content | base64 -d
      gh api repos/{owner}/{repo}/contents/CONTRIBUTING.md --jq .content | base64 -d
      ```
-   - Summarize each file to under 500 tokens before carrying it forward —
+   - Summarize each file to under 500 tokens before carrying it forward -
      don't keep full raw text in context past this step.
 
 3. **Map the File Tree**

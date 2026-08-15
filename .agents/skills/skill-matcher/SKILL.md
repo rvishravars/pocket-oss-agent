@@ -72,7 +72,7 @@ semantic similarity searches in pgvector augmented by hard preference filters.
 
 6. **Verify**
    - Ensure the top-matched issue score is > 0.65 (reasonable similarity).
-   - If no issue scores above 0.4, surface a warning: "No strong match found — recommend browsing issues manually."
+   - If no issue scores above 0.4, surface a warning: "No strong match found - recommend browsing issues manually."
 
 ## Output Schema
 

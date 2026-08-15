@@ -21,19 +21,19 @@ Generate a Markdown document with **exactly these 4 sections**. Total ≤ 60 lin
 > 🎯 Goal: {interview_context.goal} · ⏱️ Availability: {interview_context.time_commitment}
 
 ## 🗺️ Architecture Snapshot
-- `{dir}/` — {description}
+- `{dir}/` - {description}
 [3–5 bullets from repo_facts.architecture_snapshot]
 
 ## 🚀 First Mile Setup
-[numbered list from setup_steps — mark each ✅ validated or ⚠️ unverified]
-[if time:light — prepend each step with estimated time e.g. `~2 min`]
+[numbered list from setup_steps - mark each ✅ validated or ⚠️ unverified]
+[if time:light - prepend each step with estimated time e.g. `~2 min`]
 
 ## 🎯 Your First Contribution
 **Issue:** [{top_match.title}]({top_match.url})
 **Why you:** {top_match.rationale}
-[if goal:learning — add: "**What you'll learn:** ..."]
-[if goal:career — add: "**Career signal:** ..."]
-[if risk:low — open with: "This is a well-scoped, low-risk issue ideal for getting familiar with the codebase."]
+[if goal:learning - add: "**What you'll learn:** ..."]
+[if goal:career - add: "**Career signal:** ..."]
+[if risk:low - open with: "This is a well-scoped, low-risk issue ideal for getting familiar with the codebase."]
 
 ## 💬 Vibe Check
 {vibe_summary.text}

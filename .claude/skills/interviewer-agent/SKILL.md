@@ -18,7 +18,7 @@ issue.
 ## Prerequisites
 
 - `developer_context` from `resume-parser` is available if it ran first
-  (used to personalize question phrasing). Not required — the interview can
+  (used to personalize question phrasing). Not required - the interview can
   run standalone if the user hasn't provided a resume.
 
 ## Interview Question Bank
@@ -57,7 +57,7 @@ junior, concise/peer-level for senior+).
 | New features | `type:feature` |
 | Tests / code coverage | `type:tests` |
 | Performance / refactoring | `type:refactor` |
-| Any — surprise me! | `type:any` |
+| Any - surprise me! | `type:any` |
 
 ### Category D: Risk Tolerance (required)
 > _"How do you feel about tackling unfamiliar code areas?"_
@@ -73,8 +73,8 @@ junior, concise/peer-level for senior+).
 
 | Option | Tag |
 |--------|-----|
-| Solo — I'll figure it out | `collab:solo` |
-| Active thread — I want guidance | `collab:guided` |
+| Solo - I'll figure it out | `collab:solo` |
+| Active thread - I want guidance | `collab:guided` |
 | No preference | `collab:any` |
 
 ## Steps
@@ -86,7 +86,7 @@ junior, concise/peer-level for senior+).
 2. **Ask Questions**
    - Use the `AskUserQuestion` tool to present Categories A-D (batch what
      you can into one call; keep options to the tags above). Category E is
-     optional — skip it unless the flow naturally invites it.
+     optional - skip it unless the flow naturally invites it.
    - Allow multiple selections for Category C only.
 
 3. **Collect and Tag Responses**

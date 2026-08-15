@@ -23,7 +23,7 @@ Getting started with open source is hard. You don't know which issue to pick, wh
 1. Reads your resume to understand your skills
 2. Interviews you to understand your *goals*
 3. Investigates the target GitHub repo using the official GitHub MCP Server
-4. Finds the single best issue for you — semantically, not just by label
+4. Finds the single best issue for you - semantically, not just by label
 5. Delivers a **one-page contribution roadmap** tailored to you
 
 ---
@@ -87,7 +87,7 @@ graph TD
 ## 🌟 Core Features
 
 ### 🧠 Intelligent Skill Matching
-Uses **pgvector** to run semantic similarity searches between your resume profile + interview answers and open GitHub issues — not just keyword matching.
+Uses **pgvector** to run semantic similarity searches between your resume profile + interview answers and open GitHub issues - not just keyword matching.
 
 ### 🔍 GitHub MCP Server Integration
 Agents interact with GitHub through the [official GitHub MCP Server](https://github.com/github/github-mcp-server), enabling token-efficient summarization of large repos (issue lists, file trees, PR history) before passing data to the AI.
@@ -109,8 +109,8 @@ Every roadmap fits in a single screen and contains four sections:
 > 🎯 Goal: portfolio · ⏱️ Availability: light (~5 hrs/week)
 
 ## 🗺️ Architecture Snapshot
-- `src/` — Core library logic
-- `tests/` — Unit and integration tests
+- `src/` - Core library logic
+- `tests/` - Unit and integration tests
 
 ## 🚀 First Mile Setup
 1. git clone ... 
@@ -122,7 +122,7 @@ Every roadmap fits in a single screen and contains four sections:
 **Why you:** 5 years Python + asyncio. Matches your portfolio goal.
 
 ## 💬 Vibe Check
-🟢 Highly welcoming — last commit 2 days ago, issues answered in ~1 day.
+🟢 Highly welcoming - last commit 2 days ago, issues answered in ~1 day.
 ```
 
 ---

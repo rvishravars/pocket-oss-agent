@@ -9,19 +9,19 @@ resume-parser). If not, ask the user to run `/resume-parser` first.
 
 ## Interview Questions (ask sequentially, target < 90 seconds total)
 
-**1. Contribution Goal** — ask the user to pick one:
+**1. Contribution Goal** - ask the user to pick one:
 - Learn new skills / explore the codebase → tag: `goal:learning`
 - Build portfolio / showcase work → tag: `goal:portfolio`
 - Support a project I use professionally → tag: `goal:professional`
 - Land a job at this company → tag: `goal:career`
 - Give back to open source → tag: `goal:altruism`
 
-**2. Time Availability** — ask the user to pick one:
+**2. Time Availability** - ask the user to pick one:
 - < 5 hrs/week → tag: `time:light`
 - 5–15 hrs/week → tag: `time:moderate`
 - 15+ hrs/week → tag: `time:heavy`
 
-**3. Contribution Type** — ask the user to pick one or more:
+**3. Contribution Type** - ask the user to pick one or more:
 - Bug fixes → `type:bugfix`
 - Documentation → `type:docs`
 - New features → `type:feature`
@@ -29,7 +29,7 @@ resume-parser). If not, ask the user to run `/resume-parser` first.
 - Refactoring → `type:refactor`
 - Any → `type:any`
 
-**4. Risk Tolerance** — ask the user to pick one:
+**4. Risk Tolerance** - ask the user to pick one:
 - Stay in comfort zone → `risk:low`
 - Some stretch is fine → `risk:medium`
 - Challenge me! → `risk:high`

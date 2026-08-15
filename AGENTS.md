@@ -1,4 +1,4 @@
-# Pocket OSS Agent — Shared Agent Context
+# Pocket OSS Agent - Shared Agent Context
 
 This file is automatically loaded by both **Antigravity (Gemini)** and **Claude Code**.
 It provides shared project context for all AI agents working in this repository.
@@ -58,7 +58,7 @@ Each agent reads from and writes to a shared session object:
 - **Token efficiency:** Summarize all GitHub data before passing to LLM. Never pass raw file trees or full issue bodies.
 - **Embedding model consistency:** All pgvector embeddings must use the same model (e.g., `text-embedding-004`).
 - **Interview first:** The `interviewer-agent` must run before `skill-matcher` and `contribution-strategy-generator`. Its output is a required input for both.
-- **Fail loudly:** If a required upstream output is missing, abort with a descriptive error — do not silently default.
+- **Fail loudly:** If a required upstream output is missing, abort with a descriptive error - do not silently default.
 
 ---
 

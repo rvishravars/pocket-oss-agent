@@ -4,7 +4,7 @@ description: >-
   Use this skill when you need to match a developer's technical profile and
   interview answers against a GitHub repository's open issues to find the
   best-fit contribution opportunity. Ranks candidate issues in-context using
-  reasoning over skills, interview intent, and issue content — no vector
+  reasoning over skills, interview intent, and issue content - no vector
   database required.
 ---
 
@@ -17,7 +17,7 @@ pick the single best-fit issue.
 This is the in-context version for a single Claude Code session: ranking is
 done by direct reasoning over the candidate issues, not by a pgvector
 similarity search. (The production app described in `idea.md` uses
-Postgres+pgvector for this at scale with a real embedding index — that's a
+Postgres+pgvector for this at scale with a real embedding index - that's a
 separate system from this skill and doesn't need to exist for this skill to
 work.)
 
@@ -51,7 +51,7 @@ work.)
    - For each remaining issue, read its title and available body text and
      judge fit against `developer_context` (languages, frameworks, domain)
      and `interview_context` (goal, risk tolerance, collaboration style).
-   - Assign each issue a fit score from 0-1 based on your own judgment —
+   - Assign each issue a fit score from 0-1 based on your own judgment -
      this replaces the cosine-similarity step in the pgvector version.
      Treat it as a considered estimate, not a precise measurement.
    - Apply the same adjustments the production scoring model uses, as
@@ -74,7 +74,7 @@ work.)
 5. **Verify**
    - If your top match's fit feels weak (loose keyword overlap only, no
      real skill/goal alignment), say so rather than presenting it with
-     false confidence: "No strong match found — recommend browsing issues
+     false confidence: "No strong match found - recommend browsing issues
      manually."
 
 ## Output Schema

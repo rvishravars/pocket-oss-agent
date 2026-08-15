@@ -56,7 +56,7 @@ Ask questions from the following categories. Adapt phrasing based on the
 | New features | `type:feature` |
 | Tests / code coverage | `type:tests` |
 | Performance / refactoring | `type:refactor` |
-| Any — surprise me! | `type:any` |
+| Any - surprise me! | `type:any` |
 
 ### Category D: Risk Tolerance
 > _"How do you feel about tackling unfamiliar code areas?"_
@@ -72,8 +72,8 @@ Ask questions from the following categories. Adapt phrasing based on the
 
 | Option | Tag |
 |--------|-----|
-| Solo — I'll figure it out | `collab:solo` |
-| Active thread — I want guidance | `collab:guided` |
+| Solo - I'll figure it out | `collab:solo` |
+| Active thread - I want guidance | `collab:guided` |
 | No preference | `collab:any` |
 
 ## Steps

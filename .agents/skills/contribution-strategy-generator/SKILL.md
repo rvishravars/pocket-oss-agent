@@ -3,7 +3,7 @@ name: contribution-strategy-generator
 description: >-
   Use this skill when you need to synthesize a developer's profile and repository
   analysis into a final one-page OSS contribution roadmap. This is the final step
-  in the Pocket OSS Agent pipeline — it weaves all upstream outputs into a
+  in the Pocket OSS Agent pipeline - it weaves all upstream outputs into a
   concise, actionable Markdown strategy document.
 ---
 
@@ -33,9 +33,9 @@ All of the following upstream skill outputs must be available:
    - Format:
      ```
      ## 🗺️ Architecture Snapshot
-     - `src/` — Core library logic
-     - `tests/` — Unit and integration tests
-     - `docs/` — Documentation (MkDocs)
+     - `src/` - Core library logic
+     - `tests/` - Unit and integration tests
+     - `docs/` - Documentation (MkDocs)
      ```
 
 3. **Generate First Mile Setup Section**
@@ -65,7 +65,7 @@ All of the following upstream skill outputs must be available:
    - Format:
      ```
      ## 💬 Vibe Check
-     🟢 Highly welcoming — last commit 2 days ago, issues answered in ~1 day.
+     🟢 Highly welcoming - last commit 2 days ago, issues answered in ~1 day.
      Maintainer merge rate: 78%. CONTRIBUTING.md and CoC present.
      ```
 
