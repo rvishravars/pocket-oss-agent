@@ -191,14 +191,25 @@ tooling for a coding assistant:
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-pytest -q                 # 174 tests, fully offline via respx
+pytest -q                 # fully offline: no API key, no model download, no database
+pytest -m live            # opt in to the paid-API checks (deselected by default)
 ruff check . && ruff format --check .
 ```
 
 Supported on Python 3.11 through 3.14.
-The test suite mocks every GitHub call, so no token is needed and CI never
-touches the network.
-Running the agents against a real repository does need `GITHUB_TOKEN` set.
+
+The default suite reaches nothing external.
+The LLM, the embedder and the vector store are injected behind protocols, so
+tests run against fakes with no API key, no model download and no database.
+CI never spends money and cannot.
+
+Two things are opt-in:
+
+- `GITHUB_TOKEN` to run the agents against a real repository via
+  `scripts/run_pipeline.py`.
+- `pytest -m live` for the handful of checks that call the paid Claude API.
+  These are deselected by default everywhere, and skipped outright without a
+  credential.
 
 ---
 

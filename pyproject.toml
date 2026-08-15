@@ -37,6 +37,12 @@ packages = ["src/pocket_oss_agent"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# Live tests are opt-in everywhere, including locally. CI must never spend
+# money, and a developer should choose to, not discover it afterwards.
+addopts = "-m 'not live'"
+markers = [
+    "live: calls a paid cloud API. Deselected by default; run with `pytest -m live`.",
+]
 
 [tool.coverage.run]
 source = ["src/pocket_oss_agent"]
