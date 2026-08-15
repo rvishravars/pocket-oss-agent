@@ -18,13 +18,19 @@ from pydantic import BaseModel, Field
 from .errors import ProfileExtractionFailed
 from .state import DeveloperContext
 
+#: Resume parsing is single-shot structured extraction: one request, one
+#: response, inputs fully determining the output. That is the tier Haiku is
+#: for, and it costs roughly a fifth of Opus for this call. Structured outputs
+#: are supported here, so the schema path is unchanged.
+#:
 #: Structured outputs compile a schema on first use and cache it for 24 hours,
 #: so keep this stable rather than building it per request.
-MODEL = "claude-opus-5"
+MODEL = "claude-haiku-4-5"
 
-#: Thinking is on by default on this model and `max_tokens` caps thinking plus
-#: response together, so this is sized well above the profile itself.
-MAX_TOKENS = 8_000
+#: Haiku does not think by default, so this budget is the profile itself with
+#: headroom. On a thinking model it would also have to cover the reasoning,
+#: since `max_tokens` caps thinking and response together.
+MAX_TOKENS = 4_000
 
 SYSTEM_PROMPT = (
     "You are a technical recruiter extracting a structured profile from a resume. "

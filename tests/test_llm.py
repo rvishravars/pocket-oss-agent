@@ -51,6 +51,26 @@ PROFILE = ExtractedProfile(
 )
 
 
+class TestModelChoice:
+    def test_defaults_to_haiku(self) -> None:
+        """Single-shot extraction, so the cheapest tier that supports
+        structured outputs is the right one.
+        """
+        assert MODEL == "claude-haiku-4-5"
+
+    def test_the_model_is_overridable(self) -> None:
+        client = FakeClient(FakeResponse(parsed_output=PROFILE))
+        ClaudeProfileExtractor(client=client, model="claude-opus-5").extract(RESUME)
+        assert client.messages.calls[0]["model"] == "claude-opus-5"
+
+    def test_sends_no_effort_parameter(self) -> None:
+        """`effort` is rejected on Haiku 4.5."""
+        client = FakeClient(FakeResponse(parsed_output=PROFILE))
+        ClaudeProfileExtractor(client=client).extract(RESUME)
+        assert "output_config" not in client.messages.calls[0]
+        assert "effort" not in client.messages.calls[0]
+
+
 class TestExtraction:
     def test_maps_the_parsed_profile_onto_developer_context(self) -> None:
         client = FakeClient(FakeResponse(parsed_output=PROFILE))

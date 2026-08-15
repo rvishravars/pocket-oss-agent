@@ -3,7 +3,7 @@ agent: resume-parser
 position: 1
 consumes: [resume_pdf]
 produces: developer_context
-tooling: pypdf, Claude structured outputs, pgvector
+tooling: pypdf, Claude Haiku 4.5 structured outputs, pgvector
 status: implemented
 ---
 
@@ -51,12 +51,17 @@ Writes `developer_context` to the session state object.
      rather than a silent empty profile.
 
 2. **Structure the profile with the LLM**
-   - One `messages.parse()` call against `claude-opus-5` with a Pydantic schema
-     attached. Not an agent loop: the inputs fully determine the output.
+   - One `messages.parse()` call against `claude-haiku-4-5` with a Pydantic
+     schema attached. Not an agent loop: the inputs fully determine the output,
+     which is the tier Haiku is for, at roughly a fifth of Opus cost per call.
+     The model is a constructor argument, so a route that needs more capability
+     can pass one without touching this agent.
    - Check `stop_reason` before reading the parsed output. A refusal returns
      HTTP 200 with empty content, so reading the profile first turns a policy
      decline into an unrelated attribute error.
-   - Send no sampling parameters; they are rejected on this model.
+   - Send no sampling parameters, and no `effort`; both are rejected here.
+     Haiku does not think by default, so `max_tokens` covers the profile alone
+     rather than reasoning plus profile.
    - Send the raw text with the extraction prompt:
      ```
      You are a technical recruiter. From the resume text below, extract:
