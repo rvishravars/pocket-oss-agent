@@ -51,6 +51,7 @@ Writes `repo_facts` to the session state object.
     "tests": "Unit and integration tests",
     "docs": "Documentation site"
   },
+  "root_files": ["Dockerfile", "README.md", "pyproject.toml", "uv.lock"],
   "good_first_issues": [
     { "id": 1234, "title": "Fix typo in README", "url": "...", "labels": ["docs"], "days_open": 3, "comment_count": 2 }
   ],
@@ -84,6 +85,9 @@ or any downstream LLM call.
      API on large repositories, for no benefit, since only root entries are read.
    - Identify `src/`, `lib/`, `tests/`, `docs/`, `examples/`.
    - Store as `architecture_snapshot`, discarding the raw tree.
+   - Also store the root entry names as `root_files`. `env-setup-validator`
+     detects the toolchain from these, so preserving them saves it a second
+     tree fetch while staying well inside the token budget.
    - Known limitation: monorepos that nest code under `libs/` or `packages/`
      produce an empty snapshot, because the recognised names are not at root.
 

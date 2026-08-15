@@ -59,6 +59,7 @@ tooling: pgvector
 |-------|-------|
 | `github-repo-investigator` | Implemented except step 2, the LLM summaries |
 | `repo-vibe-checker` | Implemented |
+| `env-setup-validator` | Implemented except step 5, the sandboxed dry run |
 | everything else | Specified only |
 
 Reconciled against the production stack described in `AGENTS.md`: pgvector for

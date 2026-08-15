@@ -3,7 +3,8 @@ agent: env-setup-validator
 position: 4
 consumes: [repo_facts]
 produces: setup_steps
-tooling: GitHub MCP Server, sandbox runner
+tooling: GitHub REST API via httpx; sandbox runner still required for step 5
+status: implemented except step 5
 ---
 
 # Env Setup Validator
@@ -47,7 +48,17 @@ Writes `setup_steps` to the session state object.
 ## Steps
 
 1. **Detect the package manager**
-   - Scan the file tree in `repo_facts.architecture_snapshot` for:
+   - Read `repo_facts.root_files`, gathered by the investigator, so the common
+     path costs no extra requests.
+   - Markers are grouped by ecosystem, and within an ecosystem the most specific
+     marker wins. A lockfile must **suppress** the manifest it shares, not merely
+     outrank it: `package.json` beside `yarn.lock` otherwise reports "yarn + npm"
+     and the guide tells the contributor to run two competing installers.
+   - Report one toolchain per ecosystem present, since a repository can span
+     several. mastodon carries both `Gemfile` and `yarn.lock`, and omitting
+     either leaves the contributor without a working install.
+   - Recognised ecosystems: js, python, ruby, php, elixir, rust, go, jvm.
+   - Scan for:
      | File | Package Manager |
      |------|----------------|
      | `package.json` | npm / yarn / pnpm |
@@ -76,6 +87,10 @@ Writes `setup_steps` to the session state object.
      5. Test run, to prove the environment works
 
 5. **Dry-run validation**
+   - **Not implemented.** Running a repository's own install and test commands
+     executes arbitrary code from an untrusted public repository, so this needs
+     container isolation, a network policy and timeouts before it can ship.
+     Until then every step is reported `unverified`.
    - Execute steps 2 through 5 in the sandbox and record exit codes.
    - Mark a zero exit code `validated`.
    - Mark a non-zero exit code or a skipped step `unverified`.

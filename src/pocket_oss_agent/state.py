@@ -68,6 +68,11 @@ class RepoFacts(BaseModel):
     readme_summary: str | None = None
     contributing_summary: str | None = None
     architecture_snapshot: dict[str, str] = Field(default_factory=dict)
+    #: Names of files and directories at the repository root.
+    #: `env-setup-validator` detects the toolchain from these, so preserving
+    #: them costs nothing while saving it a second tree fetch. Names only, and
+    #: root only, so this stays far inside the token budget.
+    root_files: list[str] = Field(default_factory=list)
     good_first_issues: list[GoodFirstIssue] = Field(default_factory=list)
     avg_pr_merge_days: float | None = None
 

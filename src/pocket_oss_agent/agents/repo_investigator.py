@@ -24,6 +24,7 @@ TRIAGE_LABELS = ("good first issue", "help wanted", "beginner")
 ACTIVITY_WINDOW_DAYS = 90
 MAX_CANDIDATE_ISSUES = 10
 MAX_MERGED_PULLS = 20
+MAX_ROOT_FILES = 200
 SLOW_MOVING_MERGE_DAYS = 30
 
 #: Directories the Architecture Snapshot reports on, with their descriptions.
@@ -82,6 +83,17 @@ def build_architecture_snapshot(tree: list[dict[str, Any]]) -> dict[str, str]:
         if description and path not in snapshot:
             snapshot[path] = description
     return snapshot
+
+
+def root_file_names(tree: list[dict[str, Any]]) -> list[str]:
+    """Names of everything at the repository root, sorted.
+
+    `env-setup-validator` detects the toolchain from these, so carrying them
+    saves it a second tree fetch. Capped defensively; a root holding more than
+    this is not a signal anyone reads.
+    """
+    names = {path for entry in tree if "/" not in (path := entry.get("path", "")) and path}
+    return sorted(names)[:MAX_ROOT_FILES]
 
 
 def triage_issues(
@@ -168,6 +180,7 @@ async def investigate(url: str, client: GitHubClient, *, now: datetime | None = 
         owner=owner,
         repo=repo,
         architecture_snapshot=build_architecture_snapshot(tree),
+        root_files=root_file_names(tree),
         good_first_issues=triage_issues(issues, now=now),
         avg_pr_merge_days=average_merge_days(pulls),
     )

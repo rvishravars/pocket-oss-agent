@@ -11,6 +11,7 @@ raw payloads to callers beyond what the node immediately reduces.
 
 from __future__ import annotations
 
+import base64
 import os
 from typing import Any
 
@@ -149,6 +150,24 @@ class GitHubClient:
             f"/repos/{owner}/{repo}/issues/{number}/comments", owner, repo, per_page=per_page
         )
         return payload if isinstance(payload, list) else []
+
+    async def get_file_text(
+        self, owner: str, repo: str, path: str, max_bytes: int = 64_000
+    ) -> str | None:
+        """Return a repository file decoded as text, or None if absent.
+
+        Oversized or binary files return None rather than raising: a caller
+        parsing a config file wants to skip what it cannot read, not abort.
+        """
+        payload = await self._get_optional(f"/repos/{owner}/{repo}/contents/{path}", owner, repo)
+        if not isinstance(payload, dict) or payload.get("encoding") != "base64":
+            return None
+        if (payload.get("size") or 0) > max_bytes:
+            return None
+        try:
+            return base64.b64decode(payload.get("content", "")).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            return None
 
     async def count_matching_issues(self, query: str) -> int:
         """Return how many issues or pull requests match a search query.
