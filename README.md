@@ -179,7 +179,7 @@ tooling for a coding assistant:
 - [ ] `resume-parser` - PDF extraction + pgvector embeddings
 - [ ] `skill-matcher` - semantic issue matching
 - [ ] Sandboxed dry run, so setup steps can be marked verified
-- [ ] LangGraph orchestration + FastAPI
+- [x] LangGraph orchestration + FastAPI
 - [ ] Streamlit MVP demo, then Next.js production UI
 - [ ] Auth (Google OAuth 2.0)
 
