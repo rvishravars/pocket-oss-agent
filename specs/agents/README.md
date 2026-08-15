@@ -55,9 +55,19 @@ tooling: pgvector
 
 ## Status
 
-Reconciled against the production stack described in `AGENTS.md`: GitHub MCP
-Server for repository access, pgvector for similarity search, and the session
-state object for handoff between nodes.
+| Agent | State |
+|-------|-------|
+| `github-repo-investigator` | Implemented except step 2, the LLM summaries |
+| everything else | Specified only |
+
+Reconciled against the production stack described in `AGENTS.md`: pgvector for
+similarity search, and the session state object for handoff between nodes.
+Repository access uses the REST API rather than the MCP Server for the
+investigator; the reasoning is recorded in that spec.
+
+A spec and its implementation are expected to move together.
+When an implementation teaches you something the spec got wrong, such as
+GitHub's conjunctive `labels` parameter, fix the spec in the same change.
 
 An earlier revision of these files described an in-context prototype that used
 the `gh` CLI and LLM judgment in place of MCP and pgvector.

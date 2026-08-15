@@ -77,7 +77,7 @@ Each agent reads from and writes to a shared session object:
 |-------|-----------|
 | Orchestration | Python · FastAPI · LangGraph |
 | Database | PostgreSQL + `pgvector` extension |
-| GitHub Tooling | Official GitHub MCP Server |
+| GitHub Tooling | GitHub REST API for deterministic nodes; MCP Server where an LLM chooses tools |
 | Auth | Google OAuth 2.0 |
 | UI | Streamlit (MVP) / Next.js (production) |
 

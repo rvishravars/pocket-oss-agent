@@ -3,7 +3,8 @@ agent: github-repo-investigator
 position: 3
 consumes: [repo_url]
 produces: repo_facts
-tooling: GitHub MCP Server
+tooling: GitHub REST API via httpx
+status: implemented except step 2
 ---
 
 # GitHub Repo Investigator
@@ -21,11 +22,19 @@ Feeds `env-setup-validator`, `repo-vibe-checker`, `skill-matcher`, and
 
 ## Prerequisites
 
-- GitHub MCP Server is configured and running. See `mcp_config.json`.
 - `GITHUB_TOKEN` is present in the environment.
 
-Abort with a descriptive error if the MCP Server is unreachable, the URL is
-malformed, or the repository is private or rate-limited.
+Abort with a descriptive error if the URL is malformed, or the repository is
+private or rate-limited.
+
+### Why REST rather than the MCP Server
+
+The rest of the stack uses the GitHub MCP Server, which exists so an LLM can
+choose tools at runtime.
+This node makes a fixed sequence of deterministic calls and does its own
+reducing, so the token saving is identical while the code stays directly
+testable against recorded responses.
+`src/pocket_oss_agent/github_client.py` implements only the endpoints below.
 
 ## Output
 
@@ -62,18 +71,29 @@ or any downstream LLM call.
    - Extract `owner` and `repo`.
    - `https://github.com/langchain-ai/langchain` gives `owner=langchain-ai`, `repo=langchain`.
 
-2. **Fetch core documentation via MCP**
+2. **Fetch core documentation**
    - Retrieve `README.md`, `CONTRIBUTING.md`, and `CODEOWNERS` if present.
    - Summarize each to under 500 tokens before storing.
    - `CODEOWNERS` yields the key maintainer list.
+   - **Not yet implemented.** This is the only step needing an LLM, so
+     `readme_summary` and `contributing_summary` stay null rather than guessed.
 
 3. **Map the file tree**
-   - Fetch the directory structure to a depth of 2.
+   - Fetch the root tree only, without `recursive`.
+     A recursive fetch returns the entire file listing and is truncated by the
+     API on large repositories, for no benefit, since only root entries are read.
    - Identify `src/`, `lib/`, `tests/`, `docs/`, `examples/`.
    - Store as `architecture_snapshot`, discarding the raw tree.
+   - Known limitation: monorepos that nest code under `libs/` or `packages/`
+     produce an empty snapshot, because the recognised names are not at root.
 
 4. **Triage open issues**
-   - Query labels `good-first-issue`, `help-wanted`, `beginner`.
+   - Query labels `good first issue`, `help wanted`, `beginner`.
+   - Request each label in a **separate call** and union the results.
+     GitHub's `labels` parameter is conjunctive, so a single combined query
+     matches only issues carrying every label, which is almost never any issue.
+   - Deduplicate by issue number; an issue often carries several triage labels.
+   - Drop pull requests. The issues endpoint returns them too.
    - Restrict to issues opened or commented on within 90 days.
    - Keep the top 10 with id, title, URL, labels, days open, and comment count.
    - Comment count is required; `skill-matcher` uses it for the
