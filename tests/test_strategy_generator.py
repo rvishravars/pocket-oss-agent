@@ -257,3 +257,24 @@ class TestEdgeRendering:
         assert "Generated for" not in roadmap
         assert "engineer" not in roadmap
         assert verify_roadmap(roadmap) == []
+
+    def test_advice_matches_the_diagnosis_for_a_quiet_repo(self) -> None:
+        """Regression: a dormant repo with a 0% merge rate was told the project
+        was "busy", sending the contributor to spend an evening on a PR nobody
+        was going to look at.
+        """
+        roadmap = build(
+            vibe_summary=fixtures.vibe_summary(
+                pr_merge_rate=0.0, commit_status="potentially_dormant", commit_recency_days=172
+            )
+        )
+        assert "Common for busy projects" not in roadmap
+        assert "still taking contributions" in roadmap
+
+    def test_active_repo_keeps_the_crowded_queue_reading(self) -> None:
+        roadmap = build(
+            vibe_summary=fixtures.vibe_summary(
+                pr_merge_rate=0.06, commit_status="actively_maintained"
+            )
+        )
+        assert "Common for busy projects" in roadmap

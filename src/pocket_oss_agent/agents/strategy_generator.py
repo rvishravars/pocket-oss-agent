@@ -204,10 +204,18 @@ def _vibe_section(vibe: VibeSummary) -> list[str]:
     lines = ["## 💬 Vibe Check", f"{badge} {vibe.vibe_summary}".strip()]
 
     if vibe.pr_merge_rate is not None and vibe.pr_merge_rate < 0.70:
-        lines.append(
-            f"> Only {vibe.pr_merge_rate:.0%} of closed PRs get merged here. "
-            f"Common for busy projects, but worth agreeing an approach on the issue first."
-        )
+        # The advice has to match the diagnosis. A low merge rate on an active
+        # project means a crowded queue; on a quiet one it means nobody is
+        # merging anything, and calling that repo "busy" sends the contributor
+        # to spend an evening on a PR that will not be looked at.
+        if vibe.commit_status in {"slowing_down", "potentially_dormant", "unknown"}:
+            advice = (
+                "Maintainers have been quiet too, so ask on the issue whether the "
+                "project is still taking contributions before investing time."
+            )
+        else:
+            advice = "Common for busy projects, but agree an approach on the issue first."
+        lines.append(f"> Only {vibe.pr_merge_rate:.0%} of closed PRs get merged here. {advice}")
     return lines
 
 
