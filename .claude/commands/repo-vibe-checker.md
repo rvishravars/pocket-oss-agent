@@ -7,18 +7,18 @@ Requires `repo_facts` in session state (from `/github-repo-investigator`).
 
 ## Steps
 
-1. **Commit recency** — days since most recent commit:
+1. **Commit recency** - days since most recent commit:
    - ≤ 7 days → 🟢 Actively maintained
    - 8–30 days → 🟡 Moderate activity
    - 31–90 days → 🟠 Slowing down
    - > 90 days → 🔴 Potentially dormant
 
-2. **Issue response time** — average days from `created_at` to first maintainer comment (last 20 issues):
+2. **Issue response time** - average days from `created_at` to first maintainer comment (last 20 issues):
    - < 2 days → 🟢 Very responsive
    - 2–7 days → 🟡 Moderate
    - > 7 days → 🔴 Slow
 
-3. **PR merge rate** — merged / total closed PRs in last 90 days:
+3. **PR merge rate** - merged / total closed PRs in last 90 days:
    - > 60% → healthy
    - < 40% → flag as "high rejection risk"
 

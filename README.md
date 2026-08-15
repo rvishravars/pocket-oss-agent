@@ -5,11 +5,12 @@
 **Your AI-powered co-pilot for open-source contribution.**  
 Drop your resume. Pick a repo. Get a personalized, one-page contribution roadmap in seconds.
 
+[![CI](https://github.com/rvishravars/pocket-oss-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/rvishravars/pocket-oss-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-violet.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python&logoColor=white)](https://python.org)
 [![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph-orange)](https://github.com/langchain-ai/langgraph)
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL+pgvector-336791?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
-[![GitHub MCP](https://img.shields.io/badge/Tooling-GitHub%20MCP%20Server-181717?logo=github&logoColor=white)](https://github.com/github/github-mcp-server)
+[![GitHub API](https://img.shields.io/badge/Tooling-GitHub%20REST%20API-181717?logo=github&logoColor=white)](https://docs.github.com/rest)
 
 </div>
 
@@ -23,7 +24,7 @@ Getting started with open source is hard. You don't know which issue to pick, wh
 1. Reads your resume to understand your skills
 2. Interviews you to understand your *goals*
 3. Investigates the target GitHub repo using the official GitHub MCP Server
-4. Finds the single best issue for you — semantically, not just by label
+4. Finds the single best issue for you - semantically, not just by label
 5. Delivers a **one-page contribution roadmap** tailored to you
 
 ---
@@ -87,7 +88,7 @@ graph TD
 ## 🌟 Core Features
 
 ### 🧠 Intelligent Skill Matching
-Uses **pgvector** to run semantic similarity searches between your resume profile + interview answers and open GitHub issues — not just keyword matching.
+Uses **pgvector** to run semantic similarity searches between your resume profile + interview answers and open GitHub issues - not just keyword matching.
 
 ### 🔍 GitHub MCP Server Integration
 Agents interact with GitHub through the [official GitHub MCP Server](https://github.com/github/github-mcp-server), enabling token-efficient summarization of large repos (issue lists, file trees, PR history) before passing data to the AI.
@@ -109,8 +110,8 @@ Every roadmap fits in a single screen and contains four sections:
 > 🎯 Goal: portfolio · ⏱️ Availability: light (~5 hrs/week)
 
 ## 🗺️ Architecture Snapshot
-- `src/` — Core library logic
-- `tests/` — Unit and integration tests
+- `src/` - Core library logic
+- `tests/` - Unit and integration tests
 
 ## 🚀 First Mile Setup
 1. git clone ... 
@@ -122,7 +123,7 @@ Every roadmap fits in a single screen and contains four sections:
 **Why you:** 5 years Python + asyncio. Matches your portfolio goal.
 
 ## 💬 Vibe Check
-🟢 Highly welcoming — last commit 2 days ago, issues answered in ~1 day.
+🟢 Highly welcoming - last commit 2 days ago, issues answered in ~1 day.
 ```
 
 ---
@@ -141,17 +142,19 @@ Every roadmap fits in a single screen and contains four sections:
 
 ## 🤖 Agent Skills
 
-This repo ships with 7 reusable [Antigravity](https://antigravity.dev) agent skills under `.agents/skills/`:
+The seven agents are specified under `specs/agents/`.
+These are product specifications that the implementation is written against, not
+tooling for a coding assistant:
 
 | Skill | Purpose |
 |-------|---------|
-| [`interviewer-agent`](.agents/skills/interviewer-agent/SKILL.md) | Dynamic pre-analysis discovery interview |
-| [`resume-parser`](.agents/skills/resume-parser/SKILL.md) | Structured developer profile extraction from PDF |
-| [`github-repo-investigator`](.agents/skills/github-repo-investigator/SKILL.md) | MCP-powered deep repo analysis |
-| [`skill-matcher`](.agents/skills/skill-matcher/SKILL.md) | pgvector semantic issue matching with interview filters |
-| [`env-setup-validator`](.agents/skills/env-setup-validator/SKILL.md) | Auto-detect toolchain + generate First Mile setup |
-| [`repo-vibe-checker`](.agents/skills/repo-vibe-checker/SKILL.md) | Contributor-friendliness sentiment analysis |
-| [`contribution-strategy-generator`](.agents/skills/contribution-strategy-generator/SKILL.md) | Weaves all outputs into the final 1-page roadmap |
+| [`interviewer-agent`](specs/agents/interviewer-agent.md) | Dynamic pre-analysis discovery interview |
+| [`resume-parser`](specs/agents/resume-parser.md) | Structured developer profile extraction from PDF |
+| [`github-repo-investigator`](specs/agents/github-repo-investigator.md) | MCP-powered deep repo analysis |
+| [`skill-matcher`](specs/agents/skill-matcher.md) | pgvector semantic issue matching with interview filters |
+| [`env-setup-validator`](specs/agents/env-setup-validator.md) | Auto-detect toolchain + generate First Mile setup |
+| [`repo-vibe-checker`](specs/agents/repo-vibe-checker.md) | Contributor-friendliness sentiment analysis |
+| [`contribution-strategy-generator`](specs/agents/contribution-strategy-generator.md) | Weaves all outputs into the final 1-page roadmap |
 
 ---
 
@@ -165,6 +168,23 @@ This repo ships with 7 reusable [Antigravity](https://antigravity.dev) agent ski
 - [ ] Streamlit MVP demo
 - [ ] Next.js production UI
 - [ ] Auth (Google OAuth 2.0)
+
+---
+
+## 🧪 Development
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+
+pytest -q                 # 174 tests, fully offline via respx
+ruff check . && ruff format --check .
+```
+
+Supported on Python 3.11 through 3.14.
+The test suite mocks every GitHub call, so no token is needed and CI never
+touches the network.
+Running the agents against a real repository does need `GITHUB_TOKEN` set.
 
 ---
 
