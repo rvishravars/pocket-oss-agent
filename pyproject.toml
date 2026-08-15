@@ -18,6 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-cov>=5.0",
     "pytest-asyncio>=0.23",
     "respx>=0.21",
     "ruff>=0.5",
@@ -29,6 +30,17 @@ packages = ["src/pocket_oss_agent"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["src/pocket_oss_agent"]
+branch = true
+
+[tool.coverage.report]
+# The suite covers every statement today. Holding the line here means a new
+# untested branch fails CI rather than quietly eroding the guarantee.
+fail_under = 100
+show_missing = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]
 
 [tool.ruff]
 line-length = 100

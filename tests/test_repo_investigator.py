@@ -214,3 +214,27 @@ class TestAverageMergeDays:
     )
     def test_slow_moving_threshold(self, value: float | None, expected: bool) -> None:
         assert is_slow_moving(value) is expected
+
+
+class TestLabelShapes:
+    def test_accepts_labels_returned_as_plain_strings(self) -> None:
+        """Some payloads carry label names rather than label objects."""
+        issues = [
+            {
+                "number": 1,
+                "title": "t",
+                "html_url": "u",
+                "created_at": iso(2),
+                "updated_at": iso(1),
+                "comments": 0,
+                "labels": ["good first issue", {"name": "docs"}],
+            }
+        ]
+        assert triage_issues(issues, now=NOW)[0].labels == ["good first issue", "docs"]
+
+    def test_records_without_a_number_are_skipped_during_the_union(self) -> None:
+        """Guards the per-label merge against a malformed record."""
+        from pocket_oss_agent.agents.repo_investigator import _merge_issue_sets
+
+        merged = _merge_issue_sets([[{"title": "no number"}, {"number": 5, "title": "ok"}]])
+        assert [i["number"] for i in merged] == [5]

@@ -206,3 +206,54 @@ class TestSections:
         roadmap = build(developer_context=fixtures.developer_context(name=None))
         assert "Generated for" not in roadmap
         assert verify_roadmap(roadmap) == []
+
+
+class TestEdgeRendering:
+    def test_name_without_a_profile_still_greets(self) -> None:
+        roadmap = build(
+            developer_context=fixtures.developer_context(name="Ada", seniority=None, domain=None)
+        )
+        assert "> Generated for Ada" in roadmap
+        assert verify_roadmap(roadmap) == []
+
+    def test_empty_setup_says_so_rather_than_showing_an_empty_list(self) -> None:
+        roadmap = build(setup_steps=fixtures.setup_steps(setup_steps=[]))
+        assert "No setup detected" in roadmap
+        assert verify_roadmap(roadmap) == []
+
+    def test_undetected_toolchain_is_called_out(self) -> None:
+        """langchain nests its manifests, so the guide is clone and cd only."""
+        roadmap = build(
+            setup_steps=fixtures.setup_steps(
+                package_manager=None,
+                setup_steps=[
+                    SetupStep(step=1, command="git clone https://x/y", status="unverified"),
+                    SetupStep(step=2, command="cd y", status="unverified"),
+                ],
+            )
+        )
+        assert "No toolchain detected at the repo root" in roadmap
+        assert "not yet executed" not in roadmap
+
+    def test_line_budget_backstop_truncates_visibly(self) -> None:
+        """Sections are individually capped, so this is a belt-and-braces path.
+        Exercised directly because a silent overrun would break the one-screen
+        promise the whole document is built around.
+        """
+        from pocket_oss_agent.agents.strategy_generator import _enforce_line_budget
+
+        kept = _enforce_line_budget([f"line {n}" for n in range(200)])
+        assert len(kept) == MAX_ROADMAP_LINES
+        assert kept[-1].startswith("…")
+
+    def test_verifier_reports_an_over_budget_document(self) -> None:
+        oversized = build() + "\n" + "\n".join(f"pad {n}" for n in range(MAX_ROADMAP_LINES))
+        assert any("exceeds" in p for p in verify_roadmap(oversized))
+
+    def test_an_anonymous_profile_omits_the_byline_entirely(self) -> None:
+        roadmap = build(
+            developer_context=fixtures.developer_context(name=None, seniority=None, domain=None)
+        )
+        assert "Generated for" not in roadmap
+        assert "engineer" not in roadmap
+        assert verify_roadmap(roadmap) == []

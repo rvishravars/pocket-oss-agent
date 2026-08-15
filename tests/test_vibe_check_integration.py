@@ -176,3 +176,23 @@ async def test_rate_limit_aborts_and_is_not_mistaken_for_a_missing_profile(
 
     with router, pytest.raises(RateLimited):
         await check_vibe(facts(), client, now=NOW)
+
+
+async def test_issues_with_only_contributor_replies_yield_no_average(
+    client: GitHubClient,
+) -> None:
+    """Sampled issues can all lack a maintainer reply. That is unmeasured, not
+    instant, so the average must be None rather than zero.
+    """
+    issues = [{"number": 1, "created_at": iso(10), "comments": 3}]
+    with mock_github(issues=issues) as router:
+        router.get(url__regex=rf".*/repos/{REPO}/issues/\d+/comments").mock(
+            return_value=httpx.Response(
+                200, json=[{"created_at": iso(9), "author_association": "CONTRIBUTOR"}]
+            )
+        )
+        vibe = await check_vibe(facts(), client, now=NOW)
+
+    assert vibe.avg_issue_response_days is None
+    assert vibe.response_status is None
+    assert "no recent maintainer replies" in vibe.vibe_summary

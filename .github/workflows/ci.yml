@@ -63,7 +63,7 @@ jobs:
           # unauthenticated rather than quietly passing against live data.
           # Scoped to this step so actions/checkout keeps its own token.
           GITHUB_TOKEN: ""
-        run: pytest -q --junit-xml=results-${{ matrix.python-version }}.xml
+        run: pytest -q --cov --junit-xml=results-${{ matrix.python-version }}.xml
 
       - name: Upload results
         if: always()

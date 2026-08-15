@@ -224,3 +224,45 @@ class TestValidateSetupNeedsNoRequestsForAPlainRepo:
         assert setup.package_manager == "go"
         assert setup.has_docker is False
         assert has_enough_steps(setup)
+
+
+class TestTestCommandSelection:
+    def test_package_json_test_script_drives_the_js_runner(self) -> None:
+        repo = facts("package.json", "yarn.lock")
+        steps = build_setup_steps(
+            repo,
+            detect_toolchains(repo.root_files),
+            services=[],
+            compose_file=None,
+            package_scripts={"test": "jest"},
+            make_targets=set(),
+        )
+        assert commands(steps)[-1] == "yarn test"
+
+    def test_a_test_script_does_not_hijack_a_non_js_project(self) -> None:
+        repo = facts("go.mod")
+        steps = build_setup_steps(
+            repo,
+            detect_toolchains(repo.root_files),
+            services=[],
+            compose_file=None,
+            package_scripts={"test": "jest"},
+            make_targets=set(),
+        )
+        assert commands(steps)[-1] == "go test ./..."
+
+
+class TestFileFetching:
+    async def test_fetches_only_the_config_files_that_exist(self) -> None:
+        requested: list[str] = []
+
+        class RecordingClient:
+            async def get_file_text(self, owner, repo, path):
+                requested.append(path)
+                return "services:\n  db:\n    image: postgres\n"
+
+        setup = await validate_setup(facts("docker-compose.yml", "go.mod"), RecordingClient())
+
+        assert requested == ["docker-compose.yml"]
+        assert setup.docker_services == ["db"]
+        assert setup.has_docker is True

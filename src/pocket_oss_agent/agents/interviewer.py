@@ -36,7 +36,10 @@ class Category(NamedTuple):
     options: tuple[Option, ...]
     required: bool = True
     multi_select: bool = False
-    default: str | None = None
+    #: Used only when `required` is False. Typed non-optional so an optional
+    #: category cannot exist without one, which removes the unreachable guard
+    #: that used to sit in `conduct_interview`.
+    default: str = "any"
 
     @property
     def values(self) -> list[str]:
@@ -199,7 +202,7 @@ def conduct_interview(
         if raw is None or raw == [] or raw == "":
             if category.required:
                 missing.append(category.key)
-            elif category.default is not None:
+            else:
                 resolved[category.key] = category.default
             continue
         resolved[category.key] = normalise_answer(category, raw)

@@ -213,3 +213,16 @@ class TestComposeSummary:
         assert "could not be determined" in text
         assert "no recent maintainer replies" in text
         assert "0%" not in text
+
+
+class TestTimestampRobustness:
+    def test_issue_without_a_created_at_is_skipped(self) -> None:
+        comments = [{"created_at": iso(1), "author_association": "OWNER"}]
+        assert first_maintainer_reply_days({}, comments) is None
+
+    def test_unparseable_issue_timestamp_is_skipped(self) -> None:
+        comments = [{"created_at": iso(1), "author_association": "OWNER"}]
+        assert first_maintainer_reply_days({"created_at": "nonsense"}, comments) is None
+
+    def test_commit_without_a_committer_block_is_skipped(self) -> None:
+        assert commit_recency([{}, {"commit": {}}], now=NOW) == (None, None)
