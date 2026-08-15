@@ -55,6 +55,18 @@ class GitHubClient:
         response.raise_for_status()
         return response.json()
 
+    async def _get_optional(self, path: str, owner: str, repo: str, **params: Any) -> Any | None:
+        """Like `_get`, but returns None for a 404 instead of aborting.
+
+        For endpoints whose absence is information rather than failure. Rate
+        limiting still raises, so a throttled request is never mistaken for a
+        missing resource.
+        """
+        try:
+            return await self._get(path, owner, repo, **params)
+        except RepositoryUnavailable:
+            return None
+
     async def get_tree(self, owner: str, repo: str, ref: str = "HEAD") -> list[dict[str, Any]]:
         """Return the top-level tree entries for a ref.
 
@@ -89,10 +101,15 @@ class GitHubClient:
         )
         return payload if isinstance(payload, list) else []
 
-    async def list_merged_pulls(
+    async def list_closed_pulls(
         self, owner: str, repo: str, per_page: int = 50
     ) -> list[dict[str, Any]]:
-        """Return recently closed pull requests, newest first."""
+        """Return recently closed pull requests, newest first.
+
+        Includes those closed without merging. `repo-vibe-checker` needs both
+        outcomes to compute a merge rate, and `github-repo-investigator`
+        filters to merged ones itself.
+        """
         payload = await self._get(
             f"/repos/{owner}/{repo}/pulls",
             owner,
@@ -103,6 +120,59 @@ class GitHubClient:
             direction="desc",
         )
         return payload if isinstance(payload, list) else []
+
+    async def list_commits(self, owner: str, repo: str, per_page: int = 10) -> list[dict[str, Any]]:
+        """Return the most recent commits on the default branch, newest first."""
+        payload = await self._get(f"/repos/{owner}/{repo}/commits", owner, repo, per_page=per_page)
+        return payload if isinstance(payload, list) else []
+
+    async def list_recent_issues(
+        self, owner: str, repo: str, per_page: int = 50
+    ) -> list[dict[str, Any]]:
+        """Return recently updated issues regardless of label or state."""
+        payload = await self._get(
+            f"/repos/{owner}/{repo}/issues",
+            owner,
+            repo,
+            state="all",
+            per_page=per_page,
+            sort="created",
+            direction="desc",
+        )
+        return payload if isinstance(payload, list) else []
+
+    async def list_issue_comments(
+        self, owner: str, repo: str, number: int, per_page: int = 30
+    ) -> list[dict[str, Any]]:
+        """Return comments on one issue, oldest first."""
+        payload = await self._get(
+            f"/repos/{owner}/{repo}/issues/{number}/comments", owner, repo, per_page=per_page
+        )
+        return payload if isinstance(payload, list) else []
+
+    async def count_matching_issues(self, query: str) -> int:
+        """Return how many issues or pull requests match a search query.
+
+        Used where an exact total matters more than the records themselves.
+        Listing endpoints cannot sort by close date, so paging them gives a
+        biased sample: psf/requests had 113 pull requests closed in a 90 day
+        window, of which a 50-item page sorted by update time saw only some.
+        """
+        response = await self._client.get("/search/issues", params={"q": query, "per_page": 1})
+
+        if response.status_code in (403, 429) and _is_rate_limited(response):
+            raise RateLimited(_reset_epoch(response))
+        response.raise_for_status()
+        return response.json().get("total_count", 0)
+
+    async def get_community_profile(self, owner: str, repo: str) -> dict[str, Any] | None:
+        """Return the community health profile, or None if unavailable.
+
+        One call reports whether CONTRIBUTING, CODE_OF_CONDUCT and an issue
+        template exist, replacing three separate content lookups.
+        """
+        payload = await self._get_optional(f"/repos/{owner}/{repo}/community/profile", owner, repo)
+        return payload if isinstance(payload, dict) else None
 
 
 def _is_rate_limited(response: httpx.Response) -> bool:

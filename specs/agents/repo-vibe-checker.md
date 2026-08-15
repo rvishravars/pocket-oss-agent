@@ -3,7 +3,8 @@ agent: repo-vibe-checker
 position: 5
 consumes: [repo_facts]
 produces: vibe_summary
-tooling: GitHub MCP Server
+tooling: GitHub REST and search APIs via httpx
+status: implemented
 ---
 
 # Repo Vibe Checker
@@ -53,8 +54,13 @@ Writes `vibe_summary` to the session state object.
 2. **Issue response time**
    - Fetch the last 20 issues carrying at least one comment.
    - Average the gap between `created_at` and the first maintainer comment.
-   - Count only comments from users with write access.
+   - Count only comments from users with write access, identified by an
+     `author_association` of `OWNER`, `MEMBER` or `COLLABORATOR`.
      Contributor replies to each other are not maintainer responsiveness.
+   - An issue that never drew a maintainer reply is excluded from the average
+     rather than counted as an instant response.
+   - Comments are not included in the issues listing, so each sampled issue
+     costs one request. The sample is capped at 20 and issued concurrently.
 
      | Days | Status |
      |------|--------|
@@ -64,14 +70,28 @@ Writes `vibe_summary` to the session state object.
 
 3. **PR merge rate**
    - Compare merged PRs against total closed PRs over the last 90 days.
+   - Use the **search API** for exact totals, one query for `is:merged` and one
+     for `is:closed`, both bounded by `closed:>=`.
+     The listing endpoint cannot sort by close date, so paging it yields a
+     biased sample: psf/requests had 113 PRs closed in the window, of which a
+     50-item page sorted by update time saw a subset, reporting 0.27 against a
+     true 0.21.
    - Above 0.60 is healthy.
    - Flag above 30 percent closed-without-merge as high rejection risk.
+   - Note that healthy projects can sit far below this. pallets/flask merges 3
+     of every 50 closed PRs, so the threshold reads more as a warning to a
+     newcomer than as a judgement on the project.
 
 4. **Welcome signals**
    - `CONTRIBUTING.md` present: +1
    - `good-first-issue` label in active use: +1
    - `.github/ISSUE_TEMPLATE/` present: +1
    - `CODE_OF_CONDUCT.md` present: +1
+   - The first, third and fourth come from one `community/profile` call rather
+     than three content lookups. The second reuses
+     `repo_facts.good_first_issues`, already computed upstream.
+   - A missing community profile degrades the score. A rate-limited one aborts,
+     so throttling is never scored as absence.
 
      | Score | Rating |
      |-------|--------|

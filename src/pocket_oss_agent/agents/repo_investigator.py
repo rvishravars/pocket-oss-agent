@@ -160,7 +160,7 @@ async def investigate(url: str, client: GitHubClient, *, now: datetime | None = 
     tree, issue_sets, pulls = await asyncio.gather(
         client.get_tree(owner, repo),
         asyncio.gather(*(client.list_issues(owner, repo, label=label) for label in TRIAGE_LABELS)),
-        client.list_merged_pulls(owner, repo),
+        client.list_closed_pulls(owner, repo),
     )
     issues = _merge_issue_sets(issue_sets)
 
