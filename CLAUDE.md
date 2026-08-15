@@ -56,15 +56,35 @@ Claude-only rules belong in this file.
 
 ## Skills
 
-This repository has no `.claude/skills/` directory, and that is intentional.
-Skills auto-trigger on the phrasing used while developing, so if the product's seven
-runtime agents lived there they would shadow the real implementation during testing.
-Their specifications are in `specs/agents/` instead.
+Two directories, and the distinction is load-bearing.
 
-Do not add a skill that performs a pipeline agent's job.
-A skill here should encode development conventions, such as LangGraph node structure
-or how to run the agent evals, and only once there is code for it to describe.
+`specs/agents/` holds the **production** specifications: what the seven runtime
+agents must do, and the contract the Python implementation is written against.
+Nothing there is a Claude Code skill and nothing there should auto-trigger.
 
-`.claude/commands/` holds a conversational prototype of the pipeline.
-Slash commands only run when typed explicitly, so they are safe.
-They are not reconciled with `specs/agents/` and are not authoritative.
+`.claude/skills/` holds **development** skills: conventions for writing code in
+this repository. They exist to help build the product, never to perform its work.
+
+| Skill | Covers |
+|-------|--------|
+| `add-pipeline-agent` | Spec-first order, the injected-protocol seam, fail-loudly contracts, what to verify before trusting a green suite |
+| `calibrate-threshold` | Measuring a numeric cutoff against real data, after two in this system shipped wrong |
+
+Rules for anything added to `.claude/skills/`:
+
+- **Never write a skill that performs a pipeline agent's job.**
+  The seven runtime agents lived there once, and their triggers matched the
+  sentences typed while developing, so they shadowed the real implementation
+  during testing and returned plausible hand-written output instead of
+  exercising the code.
+- **Write the description against development phrasing**, never against product
+  phrasing. "when adding an agent to this codebase" is safe; "when the user
+  provides a GitHub repository URL" recreates the shadowing.
+- **Only once there is code to describe.** A skill for something unbuilt teaches
+  Claude to hand-simulate it instead of building it.
+
+`.claude/commands/` holds a conversational prototype of the pipeline plus the
+`/run-pipeline` and `/check` development commands.
+Slash commands only run when typed explicitly, so they cannot shadow anything.
+The agent commands are not reconciled with `specs/agents/` and are not
+authoritative.
