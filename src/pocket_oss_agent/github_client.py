@@ -17,7 +17,7 @@ from typing import Any
 
 import httpx
 
-from .errors import RateLimited, RepositoryUnavailable
+from .errors import NetworkUnavailable, RateLimited, RepositoryUnavailable
 
 API_ROOT = "https://api.github.com"
 _ACCEPT = "application/vnd.github+json"
@@ -45,7 +45,7 @@ class GitHubClient:
             await self._client.aclose()
 
     async def _get(self, path: str, owner: str, repo: str, **params: Any) -> Any:
-        response = await self._client.get(path, params=params or None)
+        response = await self._request(path, params or None)
 
         if response.status_code in (403, 429) and _is_rate_limited(response):
             raise RateLimited(_reset_epoch(response))
@@ -55,6 +55,13 @@ class GitHubClient:
             raise RepositoryUnavailable(owner, repo)
         response.raise_for_status()
         return response.json()
+
+    async def _request(self, path: str, params: dict[str, Any] | None) -> httpx.Response:
+        """Issue the GET, mapping transport failures onto the pipeline's errors."""
+        try:
+            return await self._client.get(path, params=params)
+        except httpx.HTTPError as exc:
+            raise NetworkUnavailable(path, exc) from exc
 
     async def _get_optional(self, path: str, owner: str, repo: str, **params: Any) -> Any | None:
         """Like `_get`, but returns None for a 404 instead of aborting.
@@ -177,7 +184,7 @@ class GitHubClient:
         biased sample: psf/requests had 113 pull requests closed in a 90 day
         window, of which a 50-item page sorted by update time saw only some.
         """
-        response = await self._client.get("/search/issues", params={"q": query, "per_page": 1})
+        response = await self._request("/search/issues", {"q": query, "per_page": 1})
 
         if response.status_code in (403, 429) and _is_rate_limited(response):
             raise RateLimited(_reset_epoch(response))

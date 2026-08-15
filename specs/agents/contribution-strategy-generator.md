@@ -3,10 +3,16 @@ agent: contribution-strategy-generator
 position: 7
 consumes: [developer_context, interview_context, repo_facts, setup_steps, vibe_summary, top_match]
 produces: roadmap
-tooling: LLM
+tooling: deterministic templating; no LLM call
+status: implemented
 ---
 
 # Contribution Strategy Generator
+
+Implemented as deterministic templating rather than an LLM call.
+Every sentence is composed from structured upstream fields, which keeps the
+output reproducible, keeps the line budget enforceable, and removes any chance
+of the terminal step inventing a fact no agent established.
 
 The Weaver.
 Synthesizes every upstream output into the final one-page roadmap.

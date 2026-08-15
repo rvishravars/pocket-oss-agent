@@ -11,7 +11,13 @@ import pytest
 import respx
 
 from pocket_oss_agent.agents.repo_investigator import TRIAGE_LABELS, investigate
-from pocket_oss_agent.errors import InvalidRepoURL, RateLimited, RepositoryUnavailable
+from pocket_oss_agent.errors import (
+    InvalidRepoURL,
+    NetworkUnavailable,
+    PipelineError,
+    RateLimited,
+    RepositoryUnavailable,
+)
 from pocket_oss_agent.github_client import API_ROOT, GitHubClient
 
 NOW = datetime(2026, 8, 15, tzinfo=UTC)
@@ -244,3 +250,34 @@ async def test_bad_url_fails_before_any_request(client: GitHubClient) -> None:
         with pytest.raises(InvalidRepoURL):
             await investigate("not a repo", client, now=NOW)
         assert not router.calls
+
+
+class TestTransportFailures:
+    """A raw httpx exception must not escape the client.
+
+    Found when a live run of the vibe checker's 20-way concurrent comment
+    fan-out hit a ConnectTimeout, which propagated past every PipelineError
+    handler and crashed with a bare traceback.
+    """
+
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            httpx.ConnectTimeout("timed out"),
+            httpx.ReadTimeout("timed out"),
+            httpx.ConnectError("dns failure"),
+            httpx.RemoteProtocolError("reset"),
+        ],
+    )
+    async def test_transport_errors_become_pipeline_errors(
+        self, client: GitHubClient, exc: Exception
+    ) -> None:
+        router = respx.mock(base_url=API_ROOT, assert_all_called=False)
+        router.get(f"/repos/{REPO}/git/trees/HEAD").mock(side_effect=exc)
+
+        with router, pytest.raises(NetworkUnavailable) as excinfo:
+            await investigate(f"https://github.com/{REPO}", client, now=NOW)
+
+        assert isinstance(excinfo.value, PipelineError)
+        assert "transient" in str(excinfo.value)
+        assert excinfo.value.cause is exc

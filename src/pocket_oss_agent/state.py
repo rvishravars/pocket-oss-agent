@@ -21,6 +21,10 @@ SetupStatus = Literal["validated", "unverified"]
 class DeveloperContext(BaseModel):
     """Produced by `resume-parser`."""
 
+    #: The roadmap header greets the developer by name. Optional, because a
+    #: resume without a clearly parseable name should still yield a profile
+    #: rather than abort; the header drops the greeting instead.
+    name: str | None = None
     languages: list[str] = Field(default_factory=list)
     frameworks: list[str] = Field(default_factory=list)
     tools: list[str] = Field(default_factory=list)
