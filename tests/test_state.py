@@ -1,9 +1,11 @@
 """The session-state contract, including the fail-loudly rule from AGENTS.md."""
 
+from datetime import UTC, datetime
+
 import pytest
 
 from pocket_oss_agent.errors import MissingUpstreamOutput
-from pocket_oss_agent.state import RepoFacts, SessionState
+from pocket_oss_agent.state import IssueIntelligence, RepoFacts, RepoIntelligence, SessionState
 
 
 def test_require_returns_a_present_value() -> None:
@@ -29,6 +31,7 @@ def test_state_starts_empty_apart_from_the_user() -> None:
         "developer_context",
         "interview_context",
         "repo_facts",
+        "repo_intelligence",
         "vibe_summary",
         "setup_steps",
         "top_match",
@@ -45,3 +48,28 @@ def test_repo_facts_round_trip_through_json() -> None:
         avg_pr_merge_days=3.0,
     )
     assert RepoFacts.model_validate_json(facts.model_dump_json()) == facts
+
+
+class TestStaleIssueIds:
+    def _issue(self, issue_id: int, *, stale: bool) -> IssueIntelligence:
+        return IssueIntelligence(
+            issue_id=issue_id,
+            difficulty="easy",
+            summary="s",
+            stale_or_claimed=stale,
+        )
+
+    def _intelligence(self, issues: list[IssueIntelligence]) -> RepoIntelligence:
+        return RepoIntelligence(
+            repo_slug="octo/widget",
+            issues=issues,
+            computed_at=datetime(2026, 8, 16, tzinfo=UTC),
+        )
+
+    def test_collects_only_the_ones_marked_stale(self) -> None:
+        intelligence = self._intelligence([self._issue(1, stale=True), self._issue(2, stale=False)])
+        assert intelligence.stale_issue_ids == {1}
+
+    def test_empty_when_nothing_is_stale(self) -> None:
+        intelligence = self._intelligence([self._issue(1, stale=False)])
+        assert intelligence.stale_issue_ids == set()

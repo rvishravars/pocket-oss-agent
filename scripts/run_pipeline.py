@@ -23,7 +23,7 @@ from pocket_oss_agent.agents.env_validator import validate_setup
 from pocket_oss_agent.agents.interviewer import conduct_interview
 from pocket_oss_agent.agents.repo_investigator import investigate
 from pocket_oss_agent.agents.resume_parser import parse_resume
-from pocket_oss_agent.agents.skill_matcher import is_confident, match_issues
+from pocket_oss_agent.agents.skill_matcher import MINIMUM_SCORE, is_confident, match_issues
 from pocket_oss_agent.agents.strategy_generator import generate_roadmap, verify_roadmap
 from pocket_oss_agent.agents.vibe_checker import check_vibe
 from pocket_oss_agent.embeddings import DeterministicEmbeddings
@@ -60,9 +60,9 @@ def build_embeddings(prefer_real: bool):
     """Return the embedder to rank with, and whether it is semantic.
 
     `DeterministicEmbeddings` hashes tokens; it is not semantic, so similarity
-    between a skills list and an issue title lands far below the spec's 0.40
-    floor and every repo falls back to browse-manually. That is a property of
-    the stand-in, not of the repo, so the harness says which one ran.
+    between a skills list and an issue title lands far below `MINIMUM_SCORE`
+    and every repo falls back to browse-manually. That is a property of the
+    stand-in, not of the repo, so the harness says which one ran.
     """
     if prefer_real:
         try:
@@ -132,7 +132,7 @@ async def run(
         print(f"  breakdown      : {state.top_match.score_breakdown}")
     else:
         best = ranked[0].score if ranked else None
-        print(f"top match        : none (best was {best}, floor is 0.40)")
+        print(f"top match        : none (best was {best}, floor is {MINIMUM_SCORE})")
         if not is_semantic:
             print(
                 "                   ^ the stand-in embedder is not semantic, so this "

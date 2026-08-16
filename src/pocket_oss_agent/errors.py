@@ -66,6 +66,16 @@ class ProfileExtractionFailed(PipelineError):
         self.detail = detail
 
 
+class RepoAnalysisFailed(PipelineError):
+    """The model did not return a usable repository analysis."""
+
+    def __init__(self, reason: str, detail: str = "") -> None:
+        suffix = f" ({detail})" if detail else ""
+        super().__init__(f"Repo analysis failed: {reason}{suffix}.")
+        self.reason = reason
+        self.detail = detail
+
+
 class EmbeddingModelMismatch(PipelineError):
     """A store and an embedding provider disagree on the model.
 

@@ -1,6 +1,6 @@
 ---
 agent: env-setup-validator
-position: 4
+position: 5
 consumes: [repo_facts]
 produces: setup_steps
 tooling: GitHub REST API via httpx; sandbox runner still required for step 5

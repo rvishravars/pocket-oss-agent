@@ -187,16 +187,31 @@ class TestWiring:
 
     async def test_the_production_lifespan_wires_itself(self, monkeypatch) -> None:
         """Exercises the no-dependencies path: the app builds its own GitHub
-        client, Claude extractor and graph at startup. The anthropic module is
-        stubbed so this needs no credential and makes no call.
+        client, Claude extractor, embedder and graph at startup. The anthropic
+        and sentence_transformers modules are stubbed so this needs no
+        credential, no model download, and makes no call.
         """
         import sys
         import types
 
-        module = types.ModuleType("anthropic")
-        module.Anthropic = lambda: object()
-        monkeypatch.setitem(sys.modules, "anthropic", module)
+        anthropic_module = types.ModuleType("anthropic")
+        anthropic_module.Anthropic = lambda: object()
+        monkeypatch.setitem(sys.modules, "anthropic", anthropic_module)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        class StubModel:
+            def __init__(self, name: str) -> None:
+                pass
+
+            def get_embedding_dimension(self) -> int:
+                return 384
+
+            def encode(self, texts, normalize_embeddings=False):
+                return [[0.5, 0.5] for _ in texts]
+
+        st_module = types.ModuleType("sentence_transformers")
+        st_module.SentenceTransformer = StubModel
+        monkeypatch.setitem(sys.modules, "sentence_transformers", st_module)
 
         app = create_app()
         async with LifespanManager(app):

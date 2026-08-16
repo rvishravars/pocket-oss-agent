@@ -10,7 +10,7 @@ import httpx
 import pytest
 import respx
 
-from pocket_oss_agent.agents.repo_investigator import TRIAGE_LABELS, investigate
+from pocket_oss_agent.agents.repo_investigator import FALLBACK_LABELS, TRIAGE_LABELS, investigate
 from pocket_oss_agent.errors import (
     InvalidRepoURL,
     NetworkUnavailable,
@@ -192,7 +192,11 @@ class TestLabelUnion:
     """
 
     async def test_requests_each_triage_label_separately(self, client: GitHubClient) -> None:
-        with mock_github(by_label={}) as router:
+        # A non-empty result for one label keeps the candidate pool non-empty,
+        # so the fallback round in TestFallbackLabels below never fires here -
+        # this test is only about how the triage labels themselves are asked for.
+        by_label = {"good first issue": [issue(1, labels=["good first issue"])]}
+        with mock_github(by_label=by_label) as router:
             await investigate(f"https://github.com/{REPO}", client, now=NOW)
 
             # respx clears its call log on context exit, so assert inside.
@@ -230,6 +234,59 @@ class TestLabelUnion:
             facts = await investigate(f"https://github.com/{REPO}", client, now=NOW)
 
         assert [i.id for i in facts.good_first_issues] == [4]
+
+
+class TestFallbackLabels:
+    """Some active repos never adopt the good-first-issue/help-wanted/beginner
+    vocabulary at all - citrolabs/ego-lite, measured 2026-08-16, had 108 open
+    issues and none of them. Without a fallback that always produced an empty
+    candidate pool, which always falls back to browse-manually regardless of
+    how well calibrated skill-matcher's floor is.
+    """
+
+    async def test_falls_back_when_no_triage_label_has_anything(self, client: GitHubClient) -> None:
+        by_label = {"bug": [issue(5, labels=["bug"])]}
+        with mock_github(by_label=by_label):
+            facts = await investigate(f"https://github.com/{REPO}", client, now=NOW)
+
+        assert [i.id for i in facts.good_first_issues] == [5]
+
+    async def test_unions_across_fallback_labels_too(self, client: GitHubClient) -> None:
+        by_label = {
+            "bug": [issue(5, labels=["bug"])],
+            "enhancement": [issue(6, labels=["enhancement"])],
+        }
+        with mock_github(by_label=by_label):
+            facts = await investigate(f"https://github.com/{REPO}", client, now=NOW)
+
+        assert sorted(i.id for i in facts.good_first_issues) == [5, 6]
+
+    async def test_skips_the_fallback_round_when_triage_already_found_something(
+        self, client: GitHubClient
+    ) -> None:
+        by_label = {"good first issue": [issue(1, labels=["good first issue"])]}
+        with mock_github(by_label=by_label) as router:
+            await investigate(f"https://github.com/{REPO}", client, now=NOW)
+
+            issue_calls = [c for c in router.calls if "/issues" in c.request.url.path]
+            requested = {c.request.url.params["labels"] for c in issue_calls}
+
+        assert requested == set(TRIAGE_LABELS), (
+            "a non-empty triage result must not trigger the extra fallback requests"
+        )
+        assert requested.isdisjoint(FALLBACK_LABELS)
+
+    async def test_an_empty_repository_still_yields_no_candidates(
+        self, client: GitHubClient
+    ) -> None:
+        """The fallback widens the label set, not the standard: a repo with
+        no matching issues at all - triage or fallback - still gets an
+        honest empty pool rather than an infinite retry.
+        """
+        with mock_github(by_label={}):
+            facts = await investigate(f"https://github.com/{REPO}", client, now=NOW)
+
+        assert facts.good_first_issues == []
 
 
 async def test_tree_is_fetched_non_recursively(client: GitHubClient) -> None:

@@ -1,6 +1,6 @@
 # Agent Specifications
 
-Specifications for the seven production agents in the Pocket OSS Agent pipeline.
+Specifications for the eight production agents in the Pocket OSS Agent pipeline.
 These describe what the agents must do.
 The Python implementation under LangGraph is written against them.
 
@@ -17,14 +17,24 @@ removed.
 | 1 | `resume-parser` | resume PDF | `developer_context` |
 | 2 | `interviewer-agent` | `developer_context` | `interview_context` |
 | 3 | `github-repo-investigator` | repo URL | `repo_facts` |
-| 4 | `env-setup-validator` | `repo_facts` | `setup_steps` |
-| 5 | `repo-vibe-checker` | `repo_facts` | `vibe_summary` |
-| 6 | `skill-matcher` | `developer_context`, `interview_context`, `repo_facts` | `top_match` |
-| 7 | `contribution-strategy-generator` | all of the above | `roadmap` |
+| 4 | `repo-analyst` | `repo_facts` | `repo_intelligence` |
+| 5 | `env-setup-validator` | `repo_facts` | `setup_steps` |
+| 6 | `repo-vibe-checker` | `repo_facts` | `vibe_summary` |
+| 7 | `skill-matcher` | `developer_context`, `interview_context`, `repo_facts`, `repo_intelligence` (optional) | `top_match` |
+| 8 | `contribution-strategy-generator` | all of the above, `repo_intelligence` (optional) | `roadmap` |
 
 Steps 1 and 3 run in parallel.
-Steps 4 and 5 run in parallel once 3 completes.
+Steps 4, 5 and 6 run in parallel once 3 completes.
 The `position` field in each spec's frontmatter matches the numbering above.
+
+`repo-analyst` (4) runs offline and cache-backed - once per repository, not
+once per request - but it is still a real node in the live LangGraph pipeline:
+`match_issues` and `roadmap` both wait on it, same as any other join. What
+makes it different is that its output is optional everywhere it is consumed:
+a cache miss that fails degrades to `repo_intelligence: null` rather than
+aborting the run, so a request never blocks on it succeeding. See
+`specs/agents/repo-analyst.md`'s Downstream section for exactly what each
+consumer does with it.
 
 ## Conventions
 
@@ -32,7 +42,7 @@ Every spec carries frontmatter naming its session-state contract:
 
 ```yaml
 agent: skill-matcher
-position: 6
+position: 7
 consumes: [developer_context, interview_context, repo_facts]
 produces: top_match
 tooling: pgvector
@@ -119,13 +129,14 @@ rather than being rediscovered one spec at a time.
 
 | Agent | State |
 |-------|-------|
-| `github-repo-investigator` | Implemented except step 2, the LLM summaries |
+| `github-repo-investigator` | Implemented except step 2, the LLM summaries - see `repo-analyst` |
+| `repo-analyst` | Implemented and wired into the live pipeline |
 | `repo-vibe-checker` | Implemented |
 | `env-setup-validator` | Implemented except step 5, the sandboxed dry run |
 | `interviewer-agent` | Implemented |
 | `contribution-strategy-generator` | Implemented |
-| `resume-parser` | Implemented; the live Claude call is unverified |
-| `skill-matcher` | Implemented; thresholds unvalidated |
+| `resume-parser` | Implemented; verified against the live Claude API |
+| `skill-matcher` | Implemented; thresholds calibrated against real repos |
 
 Reconciled against the production stack described in `AGENTS.md`: pgvector for
 similarity search, and the session state object for handoff between nodes.

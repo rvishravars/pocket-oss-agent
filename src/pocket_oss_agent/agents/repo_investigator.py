@@ -21,6 +21,16 @@ from ..github_client import GitHubClient
 from ..state import GoodFirstIssue, RepoFacts
 
 TRIAGE_LABELS = ("good first issue", "help wanted", "beginner")
+
+#: Queried only when TRIAGE_LABELS yields nothing. Plenty of active repos -
+#: citrolabs/ego-lite, measured 2026-08-16, 108 open issues, none triaged
+#: with any TRIAGE_LABELS label - never adopted that vocabulary at all, and
+#: without a fallback they always produced an empty candidate pool, which
+#: always falls back to browse-manually regardless of how well calibrated
+#: skill-matcher's floor is. Coarser labels are fine here: skill-matcher's
+#: semantic ranking and boost model do the real discrimination downstream:
+#: this step only has to stop returning nothing.
+FALLBACK_LABELS = ("bug", "enhancement", "documentation")
 ACTIVITY_WINDOW_DAYS = 90
 MAX_CANDIDATE_ISSUES = 10
 MAX_MERGED_PULLS = 20
@@ -174,14 +184,20 @@ async def investigate(url: str, client: GitHubClient, *, now: datetime | None = 
         asyncio.gather(*(client.list_issues(owner, repo, label=label) for label in TRIAGE_LABELS)),
         client.list_closed_pulls(owner, repo),
     )
-    issues = _merge_issue_sets(issue_sets)
+    candidates = triage_issues(_merge_issue_sets(issue_sets), now=now)
+
+    if not candidates:
+        fallback_sets = await asyncio.gather(
+            *(client.list_issues(owner, repo, label=label) for label in FALLBACK_LABELS)
+        )
+        candidates = triage_issues(_merge_issue_sets(fallback_sets), now=now)
 
     return RepoFacts(
         owner=owner,
         repo=repo,
         architecture_snapshot=build_architecture_snapshot(tree),
         root_files=root_file_names(tree),
-        good_first_issues=triage_issues(issues, now=now),
+        good_first_issues=candidates,
         avg_pr_merge_days=average_merge_days(pulls),
     )
 
