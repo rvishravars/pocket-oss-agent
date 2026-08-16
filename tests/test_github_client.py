@@ -108,6 +108,23 @@ class TestGetFileText:
             assert await client.get_file_text(*REPO, "logo.png") is None
 
 
+class TestGetIssue:
+    async def test_returns_the_full_record_including_the_body(self, client: GitHubClient) -> None:
+        with respx.mock(base_url=API_ROOT) as router:
+            router.get("/repos/octo/widget/issues/42").mock(
+                return_value=httpx.Response(200, json={"number": 42, "body": "Steps to repro..."})
+            )
+            issue = await client.get_issue(*REPO, 42)
+            assert issue == {"number": 42, "body": "Steps to repro..."}
+
+    async def test_a_missing_issue_is_none_not_an_error(self, client: GitHubClient) -> None:
+        with respx.mock(base_url=API_ROOT) as router:
+            router.get("/repos/octo/widget/issues/999").mock(
+                return_value=httpx.Response(404, json={"message": "Not Found"})
+            )
+            assert await client.get_issue(*REPO, 999) is None
+
+
 class TestSearchCounts:
     async def test_returns_the_total(self, client: GitHubClient) -> None:
         with respx.mock(base_url=API_ROOT) as router:

@@ -1,15 +1,23 @@
-"""LangGraph orchestration for the seven-agent pipeline.
+"""LangGraph orchestration for the eight-agent pipeline.
 
 The pipeline is a static DAG, so most of it would compose fine with plain
 async. What earns LangGraph is the interview: it needs a human mid-run, and
 `interrupt` plus a checkpointer is what lets the graph pause across an HTTP
 request and resume with the answers.
 
-    START ─┬─> parse_resume ──> interview ──┐
-           │                                ├─> match_issues ──┐
-           └─> investigate_repo ────────────┘                  ├─> roadmap ─> END
-                     ├─> validate_setup ───────────────────────┤
-                     └─> check_vibe ───────────────────────────┘
+    START ─┬─> parse_resume ──> interview ──────────┐
+           │                                        ├─> match_issues ──┐
+           └─> investigate_repo ────────────────────┘                  ├─> roadmap ─> END
+                     ├─> repo_analyst (cached) ──────────────────────────┤
+                     ├─> validate_setup ─────────────────────────────────┤
+                     └─> check_vibe ──────────────────────────────────────┘
+
+`repo_analyst` is the one node that may run once and never again for a given
+repository: it checks `RepoIntelligenceStore` before doing any work, so a
+repeat request for a repository already analyzed costs nothing extra here.
+Its output is a nullable enrichment, not a required input - a cache miss that
+fails (no key configured, a Claude error) still lets the roadmap render, the
+same way `skill-matcher` finding no confident match does.
 
 Dependencies arrive as an injected `Dependencies` bundle rather than being
 constructed in nodes, so the graph is testable with fakes and CI never needs a
@@ -27,6 +35,7 @@ from langgraph.types import interrupt
 
 from .agents.env_validator import validate_setup
 from .agents.interviewer import QUESTION_BANK, conduct_interview, opening_line
+from .agents.repo_analyst import RepoAnalyzer, analyze_repo
 from .agents.repo_investigator import investigate
 from .agents.resume_parser import parse_resume, parse_resume_text
 from .agents.skill_matcher import match_issues
@@ -36,6 +45,7 @@ from .embeddings import EmbeddingProvider
 from .errors import PipelineError
 from .github_client import GitHubClient
 from .llm import ProfileExtractor
+from .repo_intelligence_store import RepoIntelligenceStore
 from .state import SessionState
 from .vector_store import VectorStore
 
@@ -61,6 +71,8 @@ CHECKPOINT_TYPES: tuple[tuple[str, str], ...] = (
     ("pocket_oss_agent.state", "InterviewContext"),
     ("pocket_oss_agent.state", "RepoFacts"),
     ("pocket_oss_agent.state", "GoodFirstIssue"),
+    ("pocket_oss_agent.state", "RepoIntelligence"),
+    ("pocket_oss_agent.state", "IssueIntelligence"),
     ("pocket_oss_agent.state", "SetupSteps"),
     ("pocket_oss_agent.state", "SetupStep"),
     ("pocket_oss_agent.state", "VibeSummary"),
@@ -91,6 +103,12 @@ class Dependencies:
     embeddings: EmbeddingProvider
     github: GitHubClient
     store: VectorStore | None = None
+    #: Both optional together: `repo-analyst` is a nullable enrichment, so a
+    #: deployment that has not configured Sonnet access for it (or wants to
+    #: avoid the cost) simply runs without repo intelligence rather than
+    #: failing to build a graph at all.
+    repo_analyzer: RepoAnalyzer | None = None
+    repo_intelligence_store: RepoIntelligenceStore | None = None
 
 
 def interview_prompt(state: PipelineState) -> dict:
@@ -144,6 +162,21 @@ def build_graph(deps: Dependencies, checkpointer=None):
     async def investigate_node(state: PipelineState) -> dict:
         return {"repo_facts": await investigate(state.repo_url, deps.github)}
 
+    async def repo_analyst_node(state: PipelineState) -> dict:
+        if deps.repo_analyzer is None or deps.repo_intelligence_store is None:
+            return {"repo_intelligence": None}
+        try:
+            intelligence = await analyze_repo(
+                state.repo_facts, deps.github, deps.repo_analyzer, deps.repo_intelligence_store
+            )
+        except PipelineError:
+            # repo_intelligence is a nullable enrichment, not a required
+            # input - skill-matcher and the roadmap already render without
+            # it, the same way a skill-matcher miss renders a fallback
+            # rather than aborting the whole run.
+            return {"repo_intelligence": None}
+        return {"repo_intelligence": intelligence}
+
     async def interview_node(state: PipelineState) -> dict:
         # Pauses here on the first pass. The value handed to Command(resume=...)
         # comes back as `answers` when the graph is resumed.
@@ -163,6 +196,7 @@ def build_graph(deps: Dependencies, checkpointer=None):
             state.repo_facts,
             embeddings=deps.embeddings,
             store=deps.store,
+            repo_intelligence=state.repo_intelligence,
         )
         # top_match is a contractual null when nothing clears the floor, so it
         # is written even when None; the roadmap renders the fallback.
@@ -177,12 +211,14 @@ def build_graph(deps: Dependencies, checkpointer=None):
                 setup_steps=state.setup_steps,
                 vibe_summary=state.vibe_summary,
                 top_match=state.top_match,
+                repo_intelligence=state.repo_intelligence,
             )
         }
 
     graph = StateGraph(PipelineState)
     graph.add_node("parse_resume", parse_resume_node)
     graph.add_node("investigate_repo", investigate_node)
+    graph.add_node("repo_analyst", repo_analyst_node)
     graph.add_node("interview", interview_node)
     graph.add_node("validate_setup", validate_setup_node)
     graph.add_node("check_vibe", check_vibe_node)
@@ -196,7 +232,8 @@ def build_graph(deps: Dependencies, checkpointer=None):
     # The interview personalizes its phrasing from the profile.
     graph.add_edge("parse_resume", "interview")
 
-    # Both of these need only repo_facts.
+    # All three need only repo_facts, so they run in parallel once it lands.
+    graph.add_edge("investigate_repo", "repo_analyst")
     graph.add_edge("investigate_repo", "validate_setup")
     graph.add_edge("investigate_repo", "check_vibe")
 
@@ -204,8 +241,8 @@ def build_graph(deps: Dependencies, checkpointer=None):
     # Separate add_edge calls would be OR-triggers, which fires match_issues off
     # investigate_repo alone while the interview is still suspended, and it then
     # aborts on the missing interview_context.
-    graph.add_edge(["interview", "investigate_repo"], "match_issues")
-    graph.add_edge(["match_issues", "validate_setup", "check_vibe"], "roadmap")
+    graph.add_edge(["interview", "investigate_repo", "repo_analyst"], "match_issues")
+    graph.add_edge(["match_issues", "validate_setup", "check_vibe", "repo_analyst"], "roadmap")
     graph.add_edge("roadmap", END)
 
     return graph.compile(checkpointer=checkpointer or default_checkpointer())

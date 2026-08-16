@@ -142,6 +142,78 @@ class TestNoMatch:
         assert "Your First Contribution" in result["roadmap"]
 
 
+class TestRepoAnalyst:
+    """`repo_analyst` is the one node without a required dependency: neither
+    field is set on the shared `deps` fixture, so every other test in this
+    file already exercises the "not configured" no-op path. This covers what
+    happens once it is.
+    """
+
+    async def test_not_configured_leaves_repo_intelligence_null(self, deps) -> None:
+        app = build_graph(deps)
+        with github_routes():
+            await app.ainvoke(start(), config("no-analyst"))
+            result = await app.ainvoke(Command(resume=ANSWERS), config("no-analyst"))
+
+        assert result["repo_intelligence"] is None
+        assert result["roadmap"]
+
+    async def test_a_configured_analyzer_populates_repo_intelligence(self, deps) -> None:
+        import dataclasses
+        from datetime import UTC, datetime
+
+        from pocket_oss_agent.repo_intelligence_store import InMemoryRepoIntelligenceStore
+        from pocket_oss_agent.state import RepoIntelligence
+
+        class FakeAnalyzer:
+            def analyze(self, repo_facts, readme_text, contributing_text, issues):
+                return RepoIntelligence(
+                    repo_slug=repo_facts.slug,
+                    architecture_summary="A widget factory.",
+                    computed_at=datetime(2026, 8, 16, tzinfo=UTC),
+                )
+
+        configured = dataclasses.replace(
+            deps,
+            repo_analyzer=FakeAnalyzer(),
+            repo_intelligence_store=InMemoryRepoIntelligenceStore(),
+        )
+        app = build_graph(configured)
+        with github_routes():
+            await app.ainvoke(start(), config("with-analyst"))
+            result = await app.ainvoke(Command(resume=ANSWERS), config("with-analyst"))
+
+        assert result["repo_intelligence"].architecture_summary == "A widget factory."
+        assert "A widget factory." in result["roadmap"]
+
+    async def test_an_analyzer_failure_degrades_to_null_rather_than_aborting(self, deps) -> None:
+        """repo_intelligence is a nullable enrichment, not a required input -
+        a Claude error here must not take down a run that would otherwise
+        succeed, the same way a skill-matcher miss does not.
+        """
+        import dataclasses
+
+        from pocket_oss_agent.errors import RepoAnalysisFailed
+        from pocket_oss_agent.repo_intelligence_store import InMemoryRepoIntelligenceStore
+
+        class FailingAnalyzer:
+            def analyze(self, repo_facts, readme_text, contributing_text, issues):
+                raise RepoAnalysisFailed("the model declined")
+
+        configured = dataclasses.replace(
+            deps,
+            repo_analyzer=FailingAnalyzer(),
+            repo_intelligence_store=InMemoryRepoIntelligenceStore(),
+        )
+        app = build_graph(configured)
+        with github_routes():
+            await app.ainvoke(start(), config("failing-analyst"))
+            result = await app.ainvoke(Command(resume=ANSWERS), config("failing-analyst"))
+
+        assert result["repo_intelligence"] is None
+        assert result["roadmap"]
+
+
 class TestCheckpointing:
     def test_every_session_state_model_can_round_trip(self) -> None:
         """LangGraph warns on unregistered types today and will block them.

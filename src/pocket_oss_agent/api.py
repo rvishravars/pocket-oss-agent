@@ -15,6 +15,7 @@ app against fakes with no key, no model download and no database.
 
 from __future__ import annotations
 
+import os
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -25,11 +26,13 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
-from .embeddings import DeterministicEmbeddings
+from .agents.repo_analyst import ClaudeRepoAnalyzer
+from .embeddings import SentenceTransformerEmbeddings
 from .errors import PipelineError
 from .github_client import GitHubClient
 from .graph import Dependencies, PipelineState, build_graph, default_checkpointer
 from .llm import ClaudeProfileExtractor
+from .repo_intelligence_store import FileRepoIntelligenceStore
 
 #: Starlette renamed HTTP_422_UNPROCESSABLE_ENTITY to ..._CONTENT and
 #: deprecated the old spelling. Resolve once so both versions work.
@@ -103,13 +106,29 @@ CurrentState = Annotated[AppState, Depends(get_state)]
 def build_dependencies(github: GitHubClient) -> Dependencies:
     """Production wiring.
 
-    `DeterministicEmbeddings` is the default because the real embedder pulls in
-    torch, which is an opt-in extra. Swap it here, not in the agents.
+    `SentenceTransformerEmbeddings` needs the `embeddings` extra installed
+    (`pip install -e ".[embeddings]"`); missing it raises here rather than
+    silently degrading to `DeterministicEmbeddings`, the hash-based test
+    stand-in. A store built on hashes would rank issues by token overlap, not
+    meaning, and nothing downstream could tell.
+
+    `repo-analyst` is wired in too, backed by a file cache under
+    `POCKET_OSS_REPO_INTELLIGENCE_DIR` (defaults to `.cache/repo_intelligence`,
+    relative to the process's working directory - under Docker Compose, mount
+    this as a volume so the cache survives a rebuild). Unlike the embedder,
+    there is no analogous "fail loudly if missing" here: `repo_intelligence`
+    is a nullable enrichment by contract, not a required input, so the graph
+    node itself degrades to skipping it rather than this function refusing to
+    build a client.
     """
     return Dependencies(
         extractor=ClaudeProfileExtractor(),
-        embeddings=DeterministicEmbeddings(),
+        embeddings=SentenceTransformerEmbeddings(),
         github=github,
+        repo_analyzer=ClaudeRepoAnalyzer(),
+        repo_intelligence_store=FileRepoIntelligenceStore(
+            os.environ.get("POCKET_OSS_REPO_INTELLIGENCE_DIR", ".cache/repo_intelligence")
+        ),
     )
 
 

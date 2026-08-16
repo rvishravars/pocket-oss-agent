@@ -1,0 +1,41 @@
+services:
+  api:
+    build: .
+    command: >
+      uvicorn pocket_oss_agent.api:create_app --factory
+      --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # repo-analyst's cache: keyed by repository, computed once and reused
+      # across every session that asks about it. Without a volume this is
+      # thrown away and recomputed - full GitHub gather plus a Sonnet call -
+      # on every rebuild, defeating the entire reason it runs offline.
+      - repo_intelligence_cache:/app/.cache/repo_intelligence
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/openapi.json')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  ui:
+    build: .
+    command: >
+      streamlit run scripts/streamlit_app.py
+      --server.address 0.0.0.0 --server.port 8501
+    ports:
+      - "8501:8501"
+    environment:
+      # The compose network resolves service names, so the port-conflict
+      # dance needed when running both processes on the host doesn't apply
+      # here - "api" always means this compose project's API container.
+      POCKET_OSS_API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  repo_intelligence_cache:

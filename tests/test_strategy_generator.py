@@ -1,5 +1,7 @@
 """Coverage for roadmap assembly, including the spec's hard constraints."""
 
+from datetime import UTC, datetime
+
 import pytest
 
 from pocket_oss_agent.agents.strategy_generator import (
@@ -8,9 +10,14 @@ from pocket_oss_agent.agents.strategy_generator import (
     verify_roadmap,
 )
 from pocket_oss_agent.errors import MissingUpstreamOutput
-from pocket_oss_agent.state import GoodFirstIssue, SetupStep
+from pocket_oss_agent.state import GoodFirstIssue, IssueIntelligence, RepoIntelligence, SetupStep
 
 from . import fixtures
+
+
+def intelligence(**overrides) -> RepoIntelligence:
+    defaults = dict(repo_slug="octo/widget", computed_at=datetime(2026, 8, 16, tzinfo=UTC))
+    return RepoIntelligence(**{**defaults, **overrides})
 
 
 def build(**overrides) -> str:
@@ -205,6 +212,62 @@ class TestSections:
     def test_header_drops_the_greeting_without_a_name(self) -> None:
         roadmap = build(developer_context=fixtures.developer_context(name=None))
         assert "Generated for" not in roadmap
+        assert verify_roadmap(roadmap) == []
+
+
+class TestRepoIntelligence:
+    """`repo_intelligence` is a nullable, cache-backed enrichment - every
+    existing test above builds without it, so this covers what changes when
+    it is present, not a parallel copy of the same assertions.
+    """
+
+    def test_architecture_summary_appears_alongside_the_bullets(self) -> None:
+        roadmap = build(repo_intelligence=intelligence(architecture_summary="A widget factory."))
+        assert "A widget factory." in roadmap
+        assert "`src/` - Core library code" in roadmap
+
+    def test_architecture_summary_stands_in_when_no_layout_was_detected(self) -> None:
+        roadmap = build(
+            repo_facts=fixtures.repo_facts(architecture_snapshot={}),
+            repo_intelligence=intelligence(architecture_summary="A widget factory."),
+        )
+        assert "A widget factory." in roadmap
+        assert "not auto-detected" not in roadmap
+
+    def test_contribution_culture_is_set_off_from_the_quantitative_vibe_line(self) -> None:
+        roadmap = build(
+            repo_intelligence=intelligence(contribution_culture="Maintainers respond within a day.")
+        )
+        assert "_Maintainers respond within a day._" in roadmap
+
+    def test_a_stale_issue_is_excluded_from_the_browse_manually_fallback(self) -> None:
+        roadmap = build(
+            top_match=None,
+            repo_intelligence=intelligence(
+                issues=[
+                    IssueIntelligence(
+                        issue_id=1234, difficulty="easy", summary="s", stale_or_claimed=True
+                    )
+                ]
+            ),
+        )
+        assert "Add support for an async Python client" not in roadmap
+        assert "Document the retry policy" in roadmap
+
+    def test_every_candidate_stale_says_so_rather_than_claiming_none_exist(self) -> None:
+        roadmap = build(
+            top_match=None,
+            repo_intelligence=intelligence(
+                issues=[
+                    IssueIntelligence(
+                        issue_id=issue.id, difficulty="easy", summary="s", stale_or_claimed=True
+                    )
+                    for issue in fixtures.repo_facts().good_first_issues
+                ]
+            ),
+        )
+        assert "all looked already claimed" in roadmap
+        assert "labels no beginner-friendly issues" not in roadmap
         assert verify_roadmap(roadmap) == []
 
 

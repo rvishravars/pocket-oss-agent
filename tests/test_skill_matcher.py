@@ -1,14 +1,18 @@
 """Coverage for issue filtering, ranking, and the boost model."""
 
+from datetime import UTC, datetime
+
 import pytest
 
 from pocket_oss_agent.agents.skill_matcher import (
     COLLAB_BOOST,
     LANGUAGE_BOOST,
+    MINIMUM_SCORE,
     RISK_PENALTY,
     TYPE_BOOST,
     apply_hard_filters,
     build_rationale,
+    drop_stale_or_claimed,
     is_confident,
     issue_text,
     match_issues,
@@ -16,10 +20,24 @@ from pocket_oss_agent.agents.skill_matcher import (
 )
 from pocket_oss_agent.embeddings import DeterministicEmbeddings
 from pocket_oss_agent.errors import EmbeddingModelMismatch, MissingUpstreamOutput
-from pocket_oss_agent.state import GoodFirstIssue, RepoFacts
+from pocket_oss_agent.state import GoodFirstIssue, IssueIntelligence, RepoFacts, RepoIntelligence
 from pocket_oss_agent.vector_store import InMemoryVectorStore
 
 from . import fixtures
+
+
+def intelligence(*issues: IssueIntelligence, repo_slug: str = "octo/widget") -> RepoIntelligence:
+    return RepoIntelligence(
+        repo_slug=repo_slug, issues=list(issues), computed_at=datetime(2026, 8, 16, tzinfo=UTC)
+    )
+
+
+def issue_intelligence(
+    issue_id: int, *, stale: bool = False, summary: str = "s"
+) -> IssueIntelligence:
+    return IssueIntelligence(
+        issue_id=issue_id, difficulty="easy", summary=summary, stale_or_claimed=stale
+    )
 
 
 def issue(n: int, title: str, *labels: str, comments: int = 0) -> GoodFirstIssue:
@@ -198,6 +216,7 @@ class TestMatchIssues:
             repo,
             embeddings=overrides.get("embeddings", EMBEDDINGS),
             store=overrides.get("store"),
+            repo_intelligence=overrides.get("repo_intelligence"),
         )
 
     @pytest.mark.parametrize("key", ["developer_context", "interview_context", "repo_facts"])
@@ -244,7 +263,7 @@ class TestMatchIssues:
         assert ranked == []
 
     def test_a_weak_best_match_is_reported_as_none(self) -> None:
-        """The 0.40 floor is a contractual null, not a failure: the roadmap
+        """`MINIMUM_SCORE` is a contractual null, not a failure: the roadmap
         renders a browse-manually section for it.
         """
         repo = facts(issue(1, "Bump the Rust toolchain in CI"))
@@ -254,7 +273,7 @@ class TestMatchIssues:
         )
 
         assert top is None
-        assert ranked and ranked[0].score < 0.40
+        assert ranked and ranked[0].score < MINIMUM_SCORE
 
     def test_an_empty_repo_yields_no_match(self) -> None:
         top, _, ranked = self._match(facts())
@@ -305,6 +324,91 @@ class TestMatchIssues:
             self._match(facts(issue(1, "Fix", "bug")), store=store)
 
 
+class TestDropStaleOrClaimed:
+    def test_no_intelligence_keeps_everything(self) -> None:
+        issues = [issue(1, "a"), issue(2, "b")]
+        kept, filters = drop_stale_or_claimed(issues, None)
+        assert kept == issues
+        assert filters == []
+
+    def test_removes_only_issues_marked_stale(self) -> None:
+        issues = [issue(1, "a"), issue(2, "b")]
+        repo_intel = intelligence(issue_intelligence(1, stale=True), issue_intelligence(2))
+
+        kept, filters = drop_stale_or_claimed(issues, repo_intel)
+
+        assert [i.id for i in kept] == [2]
+        assert filters == ["repo_intelligence:stale_or_claimed"]
+
+    def test_an_issue_intelligence_has_no_entry_for_is_kept(self) -> None:
+        """Absence of a read is not evidence of staleness - a repo analyzed
+        before this issue existed should not lose it.
+        """
+        issues = [issue(1, "a")]
+        repo_intel = intelligence(issue_intelligence(999, stale=True))
+
+        kept, filters = drop_stale_or_claimed(issues, repo_intel)
+
+        assert [i.id for i in kept] == [1]
+        assert filters == []
+
+    def test_nothing_stale_reports_no_filter(self) -> None:
+        issues = [issue(1, "a")]
+        repo_intel = intelligence(issue_intelligence(1, stale=False))
+        kept, filters = drop_stale_or_claimed(issues, repo_intel)
+        assert kept == issues
+        assert filters == []
+
+
+class TestMatchIssuesWithRepoIntelligence:
+    def _match(self, repo, repo_intelligence, **overrides):
+        return match_issues(
+            overrides.get("developer", fixtures.developer_context()),
+            overrides.get("interview", fixtures.interview_context()),
+            repo,
+            embeddings=overrides.get("embeddings", EMBEDDINGS),
+            repo_intelligence=repo_intelligence,
+        )
+
+    def test_a_stale_issue_never_reaches_the_ranking(self) -> None:
+        repo = facts(issue(1, "Add Python asyncio client", "bug"), issue(2, "Fix docs", "bug"))
+        repo_intel = intelligence(issue_intelligence(1, stale=True))
+
+        _, filters, ranked = self._match(repo, repo_intel)
+
+        assert 1 not in [m.issue_id for m in ranked]
+        assert "repo_intelligence:stale_or_claimed" in filters
+
+    def test_everything_stale_yields_no_match_rather_than_ranking_them_anyway(self) -> None:
+        repo = facts(issue(1, "Add Python asyncio client", "bug"))
+        repo_intel = intelligence(issue_intelligence(1, stale=True))
+
+        top, _filters, ranked = self._match(repo, repo_intel)
+
+        assert top is None
+        assert ranked == []
+
+    def test_the_rationale_uses_repo_analysts_summary_when_available(self) -> None:
+        repo = facts(issue(1, "Add Python asyncio client", "bug"))
+        repo_intel = intelligence(
+            issue_intelligence(1, summary="Add an asyncio-based client variant.")
+        )
+
+        top, _filters, _ranked = self._match(repo, repo_intel, embeddings=StubEmbeddings([0.7]))
+
+        assert top is not None
+        assert "Add an asyncio-based client variant." in top.rationale
+
+    def test_an_issue_repo_intelligence_does_not_cover_keeps_the_generic_rationale(self) -> None:
+        repo = facts(issue(1, "Add Python asyncio client", "bug"))
+        repo_intel = intelligence(issue_intelligence(999))
+
+        top, _filters, _ranked = self._match(repo, repo_intel, embeddings=StubEmbeddings([0.7]))
+
+        assert top is not None
+        assert "Matches" in top.rationale
+
+
 class TestRationale:
     def test_combines_a_resume_signal_and_an_interview_signal(self) -> None:
         rationale = build_rationale(
@@ -326,10 +430,24 @@ class TestRationale:
         assert "You work in software." in rationale
         assert "your stated goal" in rationale
 
+    def test_repo_analysts_summary_replaces_the_generic_interview_sentence(self) -> None:
+        rationale = build_rationale(
+            issue(1, "Add async client"),
+            fixtures.developer_context(languages=["Python"], years_experience=5),
+            fixtures.interview_context(intent_summary="Developer wants to build their portfolio."),
+            issue_intelligence(1, summary="Add an asyncio-based client variant."),
+        )
+
+        assert (
+            rationale
+            == "You have 5 years of Python experience. Add an asyncio-based client variant."
+        )
+        assert "portfolio" not in rationale
+
 
 class TestConfidence:
     @pytest.mark.parametrize(
-        ("score", "expected"), [(None, False), (0.66, True), (0.65, False), (0.2, False)]
+        ("score", "expected"), [(None, False), (0.33, True), (0.32, False), (0.2, False)]
     )
     def test_threshold(self, score, expected) -> None:
         match = None if score is None else fixtures.top_match(score=score)

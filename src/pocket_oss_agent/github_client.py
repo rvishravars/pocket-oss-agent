@@ -158,6 +158,17 @@ class GitHubClient:
         )
         return payload if isinstance(payload, list) else []
 
+    async def get_issue(self, owner: str, repo: str, number: int) -> dict[str, Any] | None:
+        """Return one issue's full record, including its body.
+
+        `list_issues` and `list_recent_issues` return bodies too, but callers
+        that only need titles and labels use them for a whole page in one
+        call; this exists for the one place that actually needs a single
+        issue's body - `repo-analyst`, not the listing endpoints.
+        """
+        payload = await self._get_optional(f"/repos/{owner}/{repo}/issues/{number}", owner, repo)
+        return payload if isinstance(payload, dict) else None
+
     async def get_file_text(
         self, owner: str, repo: str, path: str, max_bytes: int = 64_000
     ) -> str | None:

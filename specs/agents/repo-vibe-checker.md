@@ -1,6 +1,6 @@
 ---
 agent: repo-vibe-checker
-position: 5
+position: 6
 consumes: [repo_facts]
 produces: vibe_summary
 tooling: GitHub REST and search APIs via httpx

@@ -17,6 +17,7 @@ from ..state import (
     DeveloperContext,
     InterviewContext,
     RepoFacts,
+    RepoIntelligence,
     SetupSteps,
     TopMatch,
     VibeSummary,
@@ -71,13 +72,17 @@ def generate_roadmap(
     setup_steps: SetupSteps | None,
     vibe_summary: VibeSummary | None,
     top_match: TopMatch | None,
+    repo_intelligence: RepoIntelligence | None = None,
 ) -> str:
     """Assemble the one-page roadmap.
 
     Aborts naming the first missing required input. `top_match` is the single
     permitted null, and only because `skill-matcher` may legitimately find
     nothing above its threshold; that case renders a browse-manually fallback
-    rather than dropping the section.
+    rather than dropping the section. `repo_intelligence` is nullable for a
+    different reason: it is cache-backed and may not have been computed yet
+    for this repository, so its absence changes nothing about whether the
+    roadmap can render, only how much it says.
     """
     required = {
         "developer_context": developer_context,
@@ -95,10 +100,10 @@ def generate_roadmap(
 
     blocks = [
         _header(developer_context, interview_context, repo_facts),
-        _architecture_section(repo_facts),
+        _architecture_section(repo_facts, repo_intelligence),
         _setup_section(setup_steps, interview_context),
-        _target_section(top_match, interview_context, repo_facts),
-        _vibe_section(vibe_summary),
+        _target_section(top_match, interview_context, repo_facts, repo_intelligence),
+        _vibe_section(vibe_summary, repo_intelligence),
     ]
 
     lines: list[str] = []
@@ -127,14 +132,23 @@ def _header(developer: DeveloperContext, interview: InterviewContext, repo: Repo
     return lines
 
 
-def _architecture_section(repo: RepoFacts) -> list[str]:
+def _architecture_section(
+    repo: RepoFacts, repo_intelligence: RepoIntelligence | None = None
+) -> list[str]:
     lines = ["## 🗺️ Architecture Snapshot"]
+    summary = repo_intelligence.architecture_summary if repo_intelligence else None
+    if summary:
+        lines.append(summary)
+
     if not repo.architecture_snapshot:
-        lines.append(
-            "- Layout not auto-detected. This repo nests its code, so start from the README."
-        )
+        if not summary:
+            lines.append(
+                "- Layout not auto-detected. This repo nests its code, so start from the README."
+            )
         return lines
 
+    if summary:
+        lines.append("")
     entries = list(repo.architecture_snapshot.items())
     for path, description in entries[:MAX_ARCHITECTURE_BULLETS]:
         lines.append(f"- `{path}/` - {description}")
@@ -170,15 +184,35 @@ def _setup_section(setup: SetupSteps, interview: InterviewContext) -> list[str]:
 
 
 def _target_section(
-    top_match: TopMatch | None, interview: InterviewContext, repo: RepoFacts
+    top_match: TopMatch | None,
+    interview: InterviewContext,
+    repo: RepoFacts,
+    repo_intelligence: RepoIntelligence | None = None,
 ) -> list[str]:
     lines = ["## 🎯 Your First Contribution"]
 
     if top_match is None:
-        if repo.good_first_issues:
+        stale_ids = repo_intelligence.stale_issue_ids if repo_intelligence else set()
+        candidates = [issue for issue in repo.good_first_issues if issue.id not in stale_ids]
+        if candidates:
             lines.append("No strong match found. These beginner-friendly issues are open now:")
-            for issue in repo.good_first_issues[:MAX_FALLBACK_ISSUES]:
+            # A blank line before the list matters: some Markdown parsers (the
+            # `markdown` package the PDF export uses) only recognize a list
+            # immediately after a paragraph as a list when one separates them,
+            # otherwise the items render as a run-on paragraph with literal
+            # dashes rather than as bullets.
+            lines.append("")
+            for issue in candidates[:MAX_FALLBACK_ISSUES]:
                 lines.append(f"- [{issue.title}]({issue.url})")
+        elif repo.good_first_issues:
+            # Candidates existed but every one was read as already claimed or
+            # abandoned - a different situation from there being none at all,
+            # and worth saying so rather than implying the repo has nothing.
+            lines.append(
+                f"The open beginner-friendly issues on [{repo.slug}]"
+                f"(https://github.com/{repo.slug}/issues) all looked already claimed. "
+                f"Ask on one before starting, or open a new issue."
+            )
         else:
             lines.append(
                 f"This repo labels no beginner-friendly issues. Open an issue on "
@@ -199,9 +233,17 @@ def _target_section(
     return lines
 
 
-def _vibe_section(vibe: VibeSummary) -> list[str]:
+def _vibe_section(
+    vibe: VibeSummary, repo_intelligence: RepoIntelligence | None = None
+) -> list[str]:
     badge = COMMIT_BADGES.get(vibe.commit_status, "")
     lines = ["## 💬 Vibe Check", f"{badge} {vibe.vibe_summary}".strip()]
+
+    # The quantitative read above comes from counts and dates; this, when
+    # available, is repo-analyst's own read of actual comment tone - a
+    # different kind of signal, so it is set off rather than blended in.
+    if repo_intelligence and repo_intelligence.contribution_culture:
+        lines.append(f"_{repo_intelligence.contribution_culture}_")
 
     if vibe.pr_merge_rate is not None and vibe.pr_merge_rate < 0.70:
         # The advice has to match the diagnosis. A low merge rate on an active

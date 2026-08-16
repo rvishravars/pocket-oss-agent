@@ -8,6 +8,7 @@ between agents is fixed before their implementations land, and so a downstream
 agent can be built against a fixture without renegotiating field names.
 """
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -85,6 +86,55 @@ class RepoFacts(BaseModel):
         return f"{self.owner}/{self.repo}"
 
 
+Difficulty = Literal["trivial", "easy", "moderate", "hard"]
+
+
+class IssueIntelligence(BaseModel):
+    """One candidate issue, read rather than filtered.
+
+    `GoodFirstIssue` carries what the label-based triage step could see
+    without reading anything. This carries what `repo-analyst` actually read:
+    the issue body and its comment thread.
+    """
+
+    issue_id: int
+    difficulty: Difficulty
+    skills: list[str] = Field(default_factory=list)
+    summary: str
+    stale_or_claimed: bool = False
+
+
+class RepoIntelligence(BaseModel):
+    """Produced by `repo-analyst`.
+
+    Computed offline, once per repository, and cached behind
+    `RepoIntelligenceStore`. It outlives any one session - the same record is
+    reused by every user who asks about this repository, not recomputed per
+    request - so it is also a nullable field on `SessionState`: a request can
+    legitimately reach `skill-matcher` before the cache is warm for a given
+    repository.
+    """
+
+    repo_slug: str
+    architecture_summary: str | None = None
+    tech_stack: list[str] = Field(default_factory=list)
+    contribution_culture: str | None = None
+    issues: list[IssueIntelligence] = Field(default_factory=list)
+    model_id: str = ""
+    computed_at: datetime
+
+    @property
+    def stale_issue_ids(self) -> set[int]:
+        """Issue ids `repo-analyst` read as already claimed or abandoned.
+
+        A named property rather than inlined at each call site, since both
+        `skill-matcher` (ranking) and `contribution-strategy-generator` (the
+        browse-manually fallback) need the same exclusion and neither should
+        import the other to share it.
+        """
+        return {issue.issue_id for issue in self.issues if issue.stale_or_claimed}
+
+
 class SetupStep(BaseModel):
     """One entry in the First Mile setup guide."""
 
@@ -133,6 +183,7 @@ class SessionState(BaseModel):
     developer_context: DeveloperContext | None = None
     interview_context: InterviewContext | None = None
     repo_facts: RepoFacts | None = None
+    repo_intelligence: RepoIntelligence | None = None
     vibe_summary: VibeSummary | None = None
     setup_steps: SetupSteps | None = None
     top_match: TopMatch | None = None
@@ -144,6 +195,12 @@ class SessionState(BaseModel):
         `top_match` is deliberately not special-cased here. It is nullable by
         contract when `skill-matcher` finds nothing above threshold, so its only
         consumer checks for None directly instead of calling this.
+
+        `repo_intelligence` is nullable too, but for a different reason: it is
+        the one output cached and computed offline, so a request can legitimately
+        reach `skill-matcher` before the cache is warm. Consumers treat it as an
+        optional enrichment, not a required input, so nothing calls `require`
+        for it either.
         """
         value = getattr(self, key, None)
         if value is None:

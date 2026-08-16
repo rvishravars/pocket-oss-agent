@@ -99,6 +99,11 @@ def github_routes(*, issues=None, tree=None) -> respx.MockRouter:
             200, json=[{"created_at": "2026-08-11T00:00:00Z", "author_association": "OWNER"}]
         )
     )
+    # Anchored so this does not also swallow the /comments route above: a
+    # bare /issues/7 is repo-analyst's single-issue body fetch.
+    router.get(url__regex=r".*/issues/\d+$").mock(
+        return_value=httpx.Response(200, json={"number": 7, "body": "Fix the retry backoff."})
+    )
     router.get(url__regex=r".*/contents/.*").mock(return_value=httpx.Response(404, json={}))
     return router
 

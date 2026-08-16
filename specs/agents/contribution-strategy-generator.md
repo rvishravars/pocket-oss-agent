@@ -1,7 +1,7 @@
 ---
 agent: contribution-strategy-generator
-position: 7
-consumes: [developer_context, interview_context, repo_facts, setup_steps, vibe_summary, top_match]
+position: 8
+consumes: [developer_context, interview_context, repo_facts, setup_steps, vibe_summary, top_match, repo_intelligence]
 produces: roadmap
 tooling: deterministic templating; no LLM call
 status: implemented
@@ -28,13 +28,17 @@ Terminal node of the pipeline.
 | `setup_steps` | `env-setup-validator` | Yes |
 | `vibe_summary` | `repo-vibe-checker` | Yes |
 | `top_match` | `skill-matcher` | Nullable |
+| `repo_intelligence` | `repo-analyst` | Nullable |
 
 Abort with a descriptive error naming the missing key if any required input is
 absent.
-`top_match` is the one permitted null, and only when `skill-matcher` reported
-no issue above its 0.4 threshold.
-In that case render the browse-manually fallback in place of the Target
-section rather than omitting the section.
+`top_match` is nullable when `skill-matcher` reported no issue above
+`MINIMUM_SCORE`; in that case render the browse-manually fallback in place of
+the Target section rather than omitting the section.
+`repo_intelligence` is nullable for a different reason: it is a cache-backed
+enrichment from `repo-analyst` that may not have been computed yet for this
+repository, so its absence only reduces how much a section says, never
+whether the roadmap can render.
 
 ## Output
 
@@ -44,13 +48,16 @@ lines, ready for the UI to render.
 ## Steps
 
 1. **Load and validate**
-   - Read all six inputs from session state.
+   - Read all seven inputs from session state.
    - Validate before generating.
      A partial roadmap that silently drops a section is worse than an error,
      because the user cannot tell what is missing.
 
 2. **Architecture Snapshot**
    - 3 to 5 bullets from `repo_facts.architecture_snapshot`.
+   - When `repo_intelligence.architecture_summary` is available, show it as a
+     lead sentence above the bullets - real prose from having actually read
+     the README, not just the detected top-level directories.
      ```
      ## 🗺️ Architecture Snapshot
      - `src/` - Core library logic
@@ -71,7 +78,12 @@ lines, ready for the UI to render.
      ```
 
 4. **Your First Contribution**
-   - Issue title, URL, and rationale from `top_match`.
+   - Issue title, URL, and rationale from `top_match`. When `top_match` is
+     null, list up to `MAX_FALLBACK_ISSUES` from `repo_facts.good_first_issues`
+     - excluding any `repo_intelligence` read as `stale_or_claimed`, the same
+     exclusion `skill-matcher` applies before ranking. If every candidate was
+     excluded that way, say so explicitly rather than implying the repo has
+     no beginner-friendly issues at all.
      ```
      ## 🎯 Your First Contribution
      **Issue:** [Add support for async Python client](#1234)
@@ -80,6 +92,10 @@ lines, ready for the UI to render.
 
 5. **Vibe Check**
    - `vibe_summary` plus its supporting metrics.
+   - When `repo_intelligence.contribution_culture` is available, add it as a
+     second, italicized line - `repo-analyst`'s own read of actual comment
+     tone, a different kind of signal from the quantitative merge-rate and
+     response-time numbers above it, so it is set off rather than blended in.
      ```
      ## 💬 Vibe Check
      🟢 Highly welcoming - last commit 2 days ago, issues answered in ~1 day.

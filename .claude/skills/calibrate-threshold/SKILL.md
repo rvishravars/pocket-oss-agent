@@ -16,9 +16,12 @@ shipped two that were wrong:
 | Threshold | Written as | Measured | Consequence |
 |-----------|-----------|----------|-------------|
 | PR merge rate, "healthy" | 0.60 | flask merges 3 of 50 and is healthy | flags nearly every serious repo as high rejection risk |
-| Issue similarity floor | 0.40 | best real match scored 0.3412 | the matcher never fires; every roadmap falls back to browse-manually |
+| Issue similarity floor | 0.40 | best real match scored 0.3412 on one repo | the matcher never fired; every roadmap fell back to browse-manually |
 
-Both were plausible numbers. Neither survived contact with data.
+Both were plausible numbers. Neither survived contact with data. The
+similarity floor was recalibrated 2026-08-16 against nine real repos - see
+`specs/agents/skill-matcher.md` for the evidence and the new constants. The
+merge-rate threshold is still open.
 
 ## Why they fail
 

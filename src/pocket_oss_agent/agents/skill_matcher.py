@@ -13,7 +13,15 @@ from __future__ import annotations
 
 from ..embeddings import EmbeddingProvider, cosine_similarity
 from ..errors import MissingUpstreamOutput
-from ..state import DeveloperContext, GoodFirstIssue, InterviewContext, RepoFacts, TopMatch
+from ..state import (
+    DeveloperContext,
+    GoodFirstIssue,
+    InterviewContext,
+    IssueIntelligence,
+    RepoFacts,
+    RepoIntelligence,
+    TopMatch,
+)
 from ..vector_store import VectorRecord, VectorStore, require_matching_model
 from .resume_parser import profile_text
 
@@ -34,8 +42,12 @@ RISK_PENALTY = -0.15
 COLLAB_BOOST = 0.05
 GUIDED_COMMENT_THRESHOLD = 3
 
-CONFIDENT_SCORE = 0.65
-MINIMUM_SCORE = 0.40
+#: Measured against real repos with `sentence-transformers/all-MiniLM-L6-v2`;
+#: see the calibration table in `specs/agents/skill-matcher.md` for the
+#: evidence. Retuning is a one-line change here, but do it from a fresh
+#: measurement, not by feel.
+CONFIDENT_SCORE = 0.32
+MINIMUM_SCORE = 0.25
 TOP_N = 5
 
 
@@ -110,16 +122,50 @@ def score_adjustments(
 
 
 def build_rationale(
-    issue: GoodFirstIssue, developer: DeveloperContext, interview: InterviewContext
+    issue: GoodFirstIssue,
+    developer: DeveloperContext,
+    interview: InterviewContext,
+    issue_intelligence: IssueIntelligence | None = None,
 ) -> str:
-    """Two sentences: one from the resume, one from the interview."""
+    """Two sentences: one from the resume, one from the interview.
+
+    When `repo-analyst` has read this specific issue, its own one-sentence
+    technical summary replaces the generic interview-intent sentence: "add
+    an asyncio-based client variant" says more than "matches your goal to
+    build a portfolio" ever could, because it came from actually reading the
+    issue body and its comments rather than restating what the developer
+    already told the interview.
+    """
     language = developer.languages[0] if developer.languages else "software"
     years = developer.years_experience
     experience = (
         f"You have {years} years of {language} experience." if years else f"You work in {language}."
     )
+    if issue_intelligence is not None:
+        return f"{experience} {issue_intelligence.summary}"
     intent = interview.intent_summary.rstrip(".") or "your stated goal"
     return f"{experience} Matches {intent[0].lower() + intent[1:]}."
+
+
+def drop_stale_or_claimed(
+    issues: list[GoodFirstIssue], repo_intelligence: RepoIntelligence | None
+) -> tuple[list[GoodFirstIssue], list[str]]:
+    """Remove issues `repo-analyst` read as already claimed or abandoned.
+
+    A label or title-similarity signal has no way to know this; repo-analyst
+    read the actual comment thread. Only acts on issues `repo_intelligence`
+    covers - one with no matching entry (a stale cache, a repo analyzed
+    before this issue was opened) is left in rather than dropped for missing
+    data, since absence of a read is not evidence the issue is claimed.
+    """
+    if repo_intelligence is None:
+        return list(issues), []
+    stale_ids = repo_intelligence.stale_issue_ids
+    if not stale_ids:
+        return list(issues), []
+    kept = [issue for issue in issues if issue.id not in stale_ids]
+    filters = ["repo_intelligence:stale_or_claimed"] if len(kept) < len(issues) else []
+    return kept, filters
 
 
 def match_issues(
@@ -129,16 +175,23 @@ def match_issues(
     *,
     embeddings: EmbeddingProvider,
     store: VectorStore | None = None,
+    repo_intelligence: RepoIntelligence | None = None,
 ) -> tuple[TopMatch | None, list[str], list[TopMatch]]:
     """Rank candidate issues and return ``(top_match, filters, all_matches)``.
 
-    `top_match` is None when nothing clears the 0.40 floor. That is a
+    `top_match` is None when nothing clears `MINIMUM_SCORE`. That is a
     contractual null, not a failure: `contribution-strategy-generator` renders
     a browse-manually section for it.
 
     `store` is optional. Ranking a single repo's candidates is a one-shot
     comparison against vectors built in this call, so a persistent index buys
     nothing; pass one to persist the issue vectors for reuse.
+
+    `repo_intelligence` is optional too - it is a cache-backed enrichment
+    from `repo-analyst` that may not have run yet for this repository. When
+    present, it removes issues read as already claimed and replaces the
+    generic rationale with `repo-analyst`'s own technical summary; its
+    absence changes nothing about how a candidate is scored.
     """
     for key, value in (
         ("developer_context", developer_context),
@@ -151,6 +204,8 @@ def match_issues(
     assert developer_context and interview_context and repo_facts
 
     candidates, filters = apply_hard_filters(repo_facts.good_first_issues, interview_context)
+    candidates, stale_filters = drop_stale_or_claimed(candidates, repo_intelligence)
+    filters += stale_filters
     if not candidates:
         return None, filters, []
 
@@ -169,6 +224,10 @@ def match_issues(
             ]
         )
 
+    intelligence_by_id = {
+        i.issue_id: i for i in (repo_intelligence.issues if repo_intelligence else [])
+    }
+
     ranked: list[TopMatch] = []
     for issue, vector in zip(candidates, issue_vectors, strict=True):
         similarity = cosine_similarity(developer_vector, vector)
@@ -181,7 +240,9 @@ def match_issues(
                 url=issue.url,
                 score=round(similarity + sum(adjustments.values()), 4),
                 score_breakdown=breakdown,
-                rationale=build_rationale(issue, developer_context, interview_context),
+                rationale=build_rationale(
+                    issue, developer_context, interview_context, intelligence_by_id.get(issue.id)
+                ),
             )
         )
 
